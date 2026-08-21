@@ -9,6 +9,9 @@ import (
 	"net/http"
 
 	"github.com/rverst/obscura/internal/auth"
+	"github.com/rverst/obscura/internal/blob"
+	"github.com/rverst/obscura/internal/library"
+	"github.com/rverst/obscura/internal/upload"
 )
 
 // SessionCookie is the name of the session cookie.
@@ -18,6 +21,9 @@ const SessionCookie = "obscura_session"
 type Server struct {
 	Slots    *auth.Store
 	Sessions *auth.Manager
+	Library  *library.Library
+	Uploads  *upload.Manager
+	Blobs    *blob.Store
 	Log      *slog.Logger
 
 	// Secure controls the cookie's Secure flag. Always true in production
@@ -38,6 +44,21 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("GET /api/me", s.requireSession(http.HandlerFunc(s.handleMe)))
 	mux.Handle("POST /api/password", s.requireSession(http.HandlerFunc(s.handleChangePassword)))
+
+	// Uploads: create, ask the offset, append, finish. Deliberately small --
+	// see internal/upload for why this is not tus.
+	mux.Handle("POST /api/uploads", s.requireSession(http.HandlerFunc(s.handleCreateUpload)))
+	mux.Handle("GET /api/uploads/{id}", s.requireSession(http.HandlerFunc(s.handleUploadStatus)))
+	mux.Handle("PATCH /api/uploads/{id}", s.requireSession(http.HandlerFunc(s.handleUploadChunk)))
+	mux.Handle("POST /api/uploads/{id}/finish", s.requireSession(http.HandlerFunc(s.handleFinishUpload)))
+	mux.Handle("DELETE /api/uploads/{id}", s.requireSession(http.HandlerFunc(s.handleAbortUpload)))
+
+	mux.Handle("POST /api/media/check", s.requireSession(http.HandlerFunc(s.handleCheckHash)))
+	mux.Handle("GET /api/media", s.requireSession(http.HandlerFunc(s.handleListMedia)))
+	mux.Handle("GET /api/media/{id}", s.requireSession(http.HandlerFunc(s.handleGetMedia)))
+	mux.Handle("GET /api/media/{id}/thumb", s.requireSession(http.HandlerFunc(s.handleMediaContent("thumb"))))
+	mux.Handle("GET /api/media/{id}/preview", s.requireSession(http.HandlerFunc(s.handleMediaContent("preview"))))
+	mux.Handle("GET /api/media/{id}/original", s.requireSession(http.HandlerFunc(s.handleMediaContent("original"))))
 
 	return mux
 }

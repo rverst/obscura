@@ -17,7 +17,11 @@ import (
 
 	"github.com/rverst/obscura/internal/api"
 	"github.com/rverst/obscura/internal/auth"
+	"github.com/rverst/obscura/internal/blob"
+	"github.com/rverst/obscura/internal/library"
+	"github.com/rverst/obscura/internal/media"
 	"github.com/rverst/obscura/internal/store"
+	"github.com/rverst/obscura/internal/upload"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -37,6 +41,9 @@ func run() error {
 		sessionTTL  = flag.Duration("session-ttl", 12*time.Hour, "idle time after which a session expires")
 		dev         = flag.Bool("dev", false, "development mode: cookie without the Secure flag (http://localhost only)")
 		showVersion = flag.Bool("version", false, "print the version and exit")
+		maxUpload   = flag.Int64("max-upload", 8<<30, "largest single file accepted, in bytes")
+		uploadTTL   = flag.Duration("upload-ttl", time.Hour, "how long an untouched upload survives before it is discarded")
+		concurrency = flag.Int("workers", library.DefaultConcurrency, "how many files are processed at once")
 	)
 	flag.Parse()
 
@@ -74,6 +81,23 @@ func run() error {
 	sessions := auth.NewManager(*dataDir, *sessionTTL)
 	defer sessions.CloseAll()
 
+	blobs, err := blob.NewStore(filepath.Join(*dataDir, "blobs"))
+	if err != nil {
+		return err
+	}
+	// Fail here rather than on the first upload: a missing vipsthumbnail is a
+	// deployment error, and finding out when a photo is already half uploaded
+	// is a bad time to learn about it.
+	thumbs, err := media.NewThumbnailer()
+	if err != nil {
+		return err
+	}
+	lib := library.New(blobs, thumbs, *concurrency)
+	uploads := upload.NewManager(blobs, *maxUpload, *uploadTTL)
+	// In-flight uploads hold partial blobs; shutting down without discarding
+	// them would leave .part files behind that nothing ever reclaims.
+	defer uploads.CloseAll()
+
 	initialized, err := slots.IsInitialized(context.Background())
 	if err != nil {
 		return err
@@ -82,6 +106,9 @@ func run() error {
 	srv := &api.Server{
 		Slots:    slots,
 		Sessions: sessions,
+		Library:  lib,
+		Uploads:  uploads,
+		Blobs:    blobs,
 		Log:      log,
 		Secure:   !*dev,
 	}
@@ -105,6 +132,9 @@ func run() error {
 				if n := sessions.Sweep(); n > 0 {
 					log.Info("removed expired sessions", "count", n)
 				}
+				if n := uploads.Sweep(); n > 0 {
+					log.Info("discarded abandoned uploads", "count", n)
+				}
 			case <-stopSweeper:
 				return
 			}
@@ -116,7 +146,9 @@ func run() error {
 		"addr", *addr,
 		"data", *dataDir,
 		"initialized", initialized,
-		"cookie_secure", !*dev)
+		"cookie_secure", !*dev,
+		"workers", *concurrency,
+		"max_upload", *maxUpload)
 	if !initialized {
 		log.Info(`not initialized yet -- POST /api/setup with {"username","password"}`)
 	}

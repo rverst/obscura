@@ -15,7 +15,11 @@ import (
 	"time"
 
 	"github.com/rverst/obscura/internal/auth"
+	"github.com/rverst/obscura/internal/blob"
+	"github.com/rverst/obscura/internal/library"
+	"github.com/rverst/obscura/internal/media"
 	"github.com/rverst/obscura/internal/store"
+	"github.com/rverst/obscura/internal/upload"
 )
 
 type harness struct {
@@ -41,9 +45,26 @@ func newHarness(t *testing.T) *harness {
 	sessions := auth.NewManager(dataDir, time.Hour)
 	t.Cleanup(sessions.CloseAll)
 
+	blobs, err := blob.NewStore(filepath.Join(dataDir, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Media endpoints need a thumbnailer; where it is missing the media tests
+	// skip individually rather than failing the whole harness, so the auth
+	// tests still run on a machine without libvips.
+	var lib *library.Library
+	if thumbs, err := media.NewThumbnailer(); err == nil {
+		lib = library.New(blobs, thumbs, 2)
+	}
+	uploads := upload.NewManager(blobs, 16<<20, time.Hour)
+	t.Cleanup(uploads.CloseAll)
+
 	s := &Server{
 		Slots:    auth.NewStore(authDB),
 		Sessions: sessions,
+		Library:  lib,
+		Uploads:  uploads,
+		Blobs:    blobs,
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Secure:   false, // httptest serves over plain http
 	}
