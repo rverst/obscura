@@ -64,8 +64,15 @@ FROM alpine:3.22 AS runtime
 
 # vips-tools provides vipsthumbnail, which obscura runs as a subprocess rather
 # than linking through cgo -- that is what keeps the build cgo-free and the
-# arm64 cross-build a single command. ffmpeg is for video poster frames (M5).
-RUN apk add --no-cache ca-certificates tzdata vips-tools ffmpeg && \
+# arm64 cross-build a single command.
+#
+# ffmpeg is deliberately NOT installed yet. It is needed for video poster frames
+# in M5, and adding it costs 78MB on top of this image -- almost all of it
+# encoder libraries (libavcodec, x265, aom, SVT-AV1, spirv-tools) that obscura
+# will never invoke, because it does not transcode. When M5 lands, check whether
+# a decode-only build can be used instead of pulling the whole codec stack onto
+# an SD card.
+RUN apk add --no-cache ca-certificates tzdata vips-tools && \
     adduser -D -u 10001 -h /data obscura
 
 COPY --from=build /out/obscurad /usr/local/bin/obscurad
