@@ -93,7 +93,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	lib := library.New(blobs, thumbs, *concurrency)
+	// ffmpeg is optional. Without it videos still upload, are stored and play
+	// -- playback needs nothing server-side beyond range requests -- they just
+	// get no poster frame. That keeps a slim image possible, since ffmpeg is
+	// 78MB of mostly encoder libraries obscura never invokes.
+	video, err := media.NewVideo()
+	if err != nil {
+		video = nil
+	}
+	lib := library.New(blobs, thumbs, video, *concurrency)
 	uploads := upload.NewManager(blobs, *maxUpload, *uploadTTL)
 	// In-flight uploads hold partial blobs; shutting down without discarding
 	// them would leave .part files behind that nothing ever reclaims.
@@ -157,7 +165,11 @@ func run() error {
 		"cookie_secure", !*dev,
 		"workers", *concurrency,
 		"max_upload", *maxUpload,
-		"frontend", web.Built())
+		"frontend", web.Built(),
+		"video_posters", video != nil)
+	if video == nil {
+		log.Warn("ffmpeg not found -- videos will upload and play, but without poster frames")
+	}
 	if !web.Built() {
 		log.Warn("no frontend embedded -- API only; run `npm run build` in web/ or use the Docker image")
 	}

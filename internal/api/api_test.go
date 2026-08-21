@@ -54,7 +54,8 @@ func newHarness(t *testing.T) *harness {
 	// tests still run on a machine without libvips.
 	var lib *library.Library
 	if thumbs, err := media.NewThumbnailer(); err == nil {
-		lib = library.New(blobs, thumbs, 2)
+		video, _ := media.NewVideo() // nil when ffmpeg is absent
+		lib = library.New(blobs, thumbs, video, 2)
 	}
 	uploads := upload.NewManager(blobs, 16<<20, time.Hour)
 	t.Cleanup(uploads.CloseAll)

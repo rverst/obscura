@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -61,8 +63,9 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	video, _ := media.NewVideo() // nil when ffmpeg is absent
 	return &fixture{
-		lib:   New(blobs, th, 2),
+		lib:   New(blobs, th, video, 2),
 		vault: Vault{DB: db, DEK: dek, UserID: 1},
 		blobs: blobs,
 		dir:   dir,
@@ -231,25 +234,6 @@ func TestFailedIngestCleansUp(t *testing.T) {
 	}
 }
 
-// Videos have no derivatives until M5, but must still be stored rather than
-// rejected -- otherwise uploading a phone's camera roll loses every clip.
-func TestVideoIsStoredWithoutDerivatives(t *testing.T) {
-	f := newFixture(t)
-	m, err := f.upload(t, "clip.mp4", []byte("not really an mp4, but classified by extension"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Kind != KindVideo {
-		t.Fatalf("Kind = %q, want video", m.Kind)
-	}
-	if m.BlobThumb != "" || m.BlobPreview != "" {
-		t.Fatal("a video got image derivatives")
-	}
-	if m.BlobOrig == "" {
-		t.Fatal("the original was not kept")
-	}
-}
-
 func TestListIsNewestFirst(t *testing.T) {
 	f := newFixture(t)
 	// Distinct content so dedup does not collapse them.
@@ -358,5 +342,110 @@ func TestKindOf(t *testing.T) {
 		if got := kindOf(name); got != want {
 			t.Errorf("kindOf(%q) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// --- video ------------------------------------------------------------------
+
+// makeClip renders a short video with ffmpeg, or skips.
+func makeClip(t *testing.T, seconds string, w, h int, faststart bool) []byte {
+	t.Helper()
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed -- run these through `make test` (Docker)")
+	}
+	path := filepath.Join(t.TempDir(), "clip.mp4")
+	args := []string{
+		"-v", "error", "-y", "-f", "lavfi",
+		"-i", fmt.Sprintf("testsrc2=size=%dx%d:duration=%s:rate=15", w, h, seconds),
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+	}
+	if faststart {
+		args = append(args, "-movflags", "+faststart")
+	}
+	args = append(args, path)
+	if err := exec.Command("ffmpeg", args...).Run(); err != nil {
+		t.Skipf("cannot render a test clip: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestIngestVideoProducesPosterAndDuration(t *testing.T) {
+	f := newFixture(t)
+	if f.lib.video == nil {
+		t.Skip("ffmpeg not installed")
+	}
+	m, err := f.upload(t, "holiday.mp4", makeClip(t, "3", 640, 480, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if m.Kind != KindVideo {
+		t.Fatalf("Kind = %q, want video", m.Kind)
+	}
+	if m.BlobThumb == "" || m.BlobPreview == "" {
+		t.Fatal("no poster frames were produced")
+	}
+	if m.Width != 640 || m.Height != 480 {
+		t.Fatalf("dimensions %dx%d, want 640x480", m.Width, m.Height)
+	}
+	if m.DurationMs < 2500 || m.DurationMs > 3500 {
+		t.Fatalf("DurationMs = %d, want roughly 3000", m.DurationMs)
+	}
+
+	// The poster has to be a real, readable image.
+	r, err := f.blobs.Open(f.vault.DEK, m.BlobThumb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if _, err := jpeg.DecodeConfig(r); err != nil {
+		t.Fatalf("the poster is not a decodable JPEG: %v", err)
+	}
+}
+
+// An MP4 with its index at the end is ffmpeg's own default and common from
+// cameras. It is also the case a pipe cannot handle at all.
+func TestIngestVideoWithIndexAtTheEnd(t *testing.T) {
+	f := newFixture(t)
+	if f.lib.video == nil {
+		t.Skip("ffmpeg not installed")
+	}
+	m, err := f.upload(t, "camera.mp4", makeClip(t, "3", 640, 480, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.BlobThumb == "" {
+		t.Fatal("no poster for an index-at-end video")
+	}
+}
+
+// A clip that cannot be decoded must still be stored. The original is served as
+// uploaded, so refusing the file would lose it for the sake of a thumbnail.
+func TestUndecodableVideoIsStoredWithoutPoster(t *testing.T) {
+	f := newFixture(t)
+	m, err := f.upload(t, "broken.mp4", []byte("not a video at all, but named like one"))
+	if err != nil {
+		t.Fatalf("an undecodable video was rejected instead of stored: %v", err)
+	}
+	if m.Kind != KindVideo {
+		t.Fatalf("Kind = %q", m.Kind)
+	}
+	if m.BlobOrig == "" {
+		t.Fatal("the original was not kept")
+	}
+	if m.BlobThumb != "" {
+		t.Fatal("a poster was reported for a file that cannot be decoded")
+	}
+	// And it must be listed, not silently absent.
+	items, err := List(context.Background(), f.vault, ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("%d items in the library, want 1", len(items))
 	}
 }

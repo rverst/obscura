@@ -46,6 +46,10 @@ type Vault struct {
 type Library struct {
 	blobs  *blob.Store
 	thumbs *media.Thumbnailer
+	// video is nil when ffmpeg is not installed. Videos are then stored and
+	// served as normal, they simply get no poster frame -- playback needs
+	// nothing server-side beyond range requests.
+	video *media.Video
 
 	// sem bounds concurrent processing. libvips needs roughly 30MB per image;
 	// unbounded parallelism reliably kills a 2GB Pi during a bulk import, and
@@ -56,12 +60,17 @@ type Library struct {
 // DefaultConcurrency is how many files are processed at once.
 const DefaultConcurrency = 2
 
-// New wires a library together.
-func New(blobs *blob.Store, thumbs *media.Thumbnailer, concurrency int) *Library {
+// New wires a library together. video may be nil.
+func New(blobs *blob.Store, thumbs *media.Thumbnailer, video *media.Video, concurrency int) *Library {
 	if concurrency < 1 {
 		concurrency = DefaultConcurrency
 	}
-	return &Library{blobs: blobs, thumbs: thumbs, sem: make(chan struct{}, concurrency)}
+	return &Library{
+		blobs:  blobs,
+		thumbs: thumbs,
+		video:  video,
+		sem:    make(chan struct{}, concurrency),
+	}
 }
 
 // Media is a stored photo or video.
@@ -150,13 +159,16 @@ func (l *Library) Ingest(ctx context.Context, v Vault, in Ingestion) (*Media, er
 		}
 	}()
 
-	if m.Kind == KindPhoto {
+	switch m.Kind {
+	case KindPhoto:
 		if err := l.processPhoto(ctx, v, m, &created); err != nil {
 			return nil, err
 		}
+	case KindVideo:
+		if err := l.processVideo(ctx, v, m, &created); err != nil {
+			return nil, err
+		}
 	}
-	// Video derivatives (poster frame, duration) are M5. The record is stored
-	// without them so an uploaded video is not lost in the meantime.
 
 	if err := insertMedia(ctx, v, m); err != nil {
 		return nil, err
@@ -260,4 +272,61 @@ func mimeOf(filename string) string {
 		return t
 	}
 	return "application/octet-stream"
+}
+
+// processVideo probes a video and extracts a poster frame.
+//
+// A failure here is not fatal. Nothing is transcoded and the original is served
+// as uploaded, so a clip whose first frames ffmpeg cannot decode still uploads,
+// still plays, and simply has no still image -- which is much better than
+// refusing the file.
+func (l *Library) processVideo(ctx context.Context, v Vault, m *Media, created *[]string) error {
+	if l.video == nil {
+		return nil // ffmpeg not installed; see media.NewVideo
+	}
+
+	src, err := l.blobs.Open(v.DEK, m.BlobOrig)
+	if err != nil {
+		return fmt.Errorf("library: reopen video: %w", err)
+	}
+	defer src.Close()
+
+	if info, err := l.video.Probe(ctx, src, src.Size); err == nil {
+		m.DurationMs = info.DurationMs
+		m.Width, m.Height = info.Width, info.Height
+	}
+
+	for _, d := range []struct {
+		size int
+		dst  *string
+	}{
+		{media.ThumbSize, &m.BlobThumb},
+		{media.PreviewSize, &m.BlobPreview},
+	} {
+		id, err := l.derivePoster(ctx, v, src, d.size)
+		if err != nil {
+			// Give up on stills but keep the video.
+			return nil
+		}
+		*d.dst = id
+		*created = append(*created, id)
+	}
+	return nil
+}
+
+// derivePoster stores one still from the video as its own blob.
+func (l *Library) derivePoster(ctx context.Context, v Vault, src *blob.Reader, size int) (string, error) {
+	w, err := l.blobs.Create(v.DEK)
+	if err != nil {
+		return "", err
+	}
+	defer w.Abort()
+
+	if err := l.video.Poster(ctx, src, src.Size, w, size); err != nil {
+		return "", err
+	}
+	if _, _, err := w.Commit(); err != nil {
+		return "", err
+	}
+	return w.ID(), nil
 }
