@@ -8,9 +8,13 @@ require (
 )
 
 require (
+	github.com/evanoberholster/imagemeta v1.0.0 // indirect
 	github.com/minio/sio v0.5.1 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v3 v3.2.35304 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
+	github.com/philhofer/fwd v1.2.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/tinylib/msgp v1.6.3 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	lukechampine.com/adiantum v1.1.1 // indirect
 )
