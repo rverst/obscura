@@ -2,8 +2,15 @@ package media
 
 import (
 	"errors"
+	"image"
 	"io"
 	"time"
+
+	// Registered for their DecodeConfig side effect only -- obscura never
+	// decodes a full image in Go, that is libvips' job.
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 
 	"github.com/evanoberholster/imagemeta"
 	"github.com/evanoberholster/imagemeta/meta"
@@ -116,4 +123,21 @@ func orientationValue(o meta.Orientation) int {
 		return 1 // unset or nonsense: treat as upright
 	}
 	return v
+}
+
+// Dimensions reads the pixel dimensions from an image header.
+//
+// EXIF carries them only sometimes -- PNGs, screenshots and stripped exports
+// have none -- but the grid needs an aspect ratio for every photo, otherwise it
+// cannot lay out a row before the image has loaded. DecodeConfig reads just the
+// header, so this does not decode the image.
+func Dimensions(r io.ReadSeeker) (width, height int, err error) {
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return 0, 0, err
+	}
+	cfg, _, err := image.DecodeConfig(r)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
 }
