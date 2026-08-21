@@ -5,6 +5,16 @@
 # Building for a Raspberry Pi on an x86 laptop therefore needs no emulation and
 # no cross toolchain.
 
+# ---------- frontend --------------------------------------------------------
+# Runs on the BUILD platform: the output is static files, identical for every
+# target architecture, so there is nothing to gain from emulating the target.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ .
+RUN npm run build
+
 # ---------- dependencies ----------------------------------------------------
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS deps
 WORKDIR /src
@@ -19,6 +29,7 @@ FROM deps AS test
 # silently skip and the suite would look green while covering nothing.
 RUN apk add --no-cache vips-tools
 COPY . .
+COPY --from=web /web/dist ./web/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     gofmt -l ./cmd ./internal | tee /tmp/unformatted && \
@@ -36,6 +47,9 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
 COPY . .
+# Overwrites the committed dist/.gitkeep placeholder with the real build, which
+# is what go:embed then bakes into the binary.
+COPY --from=web /web/dist ./web/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \

@@ -46,12 +46,24 @@ logs: ## Follow the container logs
 
 # --- Native (fast inner loop) ------------------------------------------------
 
+.PHONY: web
+web: ## Build the frontend into web/dist
+	cd web && npm ci && npm run build
+
+.PHONY: web-test
+web-test: ## Run the frontend unit tests
+	cd web && npm test
+
+.PHONY: web-dev
+web-dev: ## Vite dev server with hot reload, proxying /api to a local obscurad
+	cd web && npm run dev
+
 .PHONY: test-native
-test-native: ## Run the tests directly on the host
-	gofmt -l ./cmd ./internal
+test-native: ## Run the Go tests directly on the host
+	gofmt -l ./cmd ./internal ./web
 	go vet ./...
 	go test -count=1 ./...
 
 .PHONY: run-native
-run-native: ## Run the server directly on the host
+run-native: ## Run the server directly on the host (needs `make web` first)
 	go run ./cmd/obscurad -data ./data -dev

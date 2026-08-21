@@ -7,8 +7,9 @@ data/
 *.db-wal
 *.db-shm
 obscurad
-web/dist/
 web/node_modules/
+# web/dist is deliberately NOT ignored: the committed .gitkeep placeholder has
+# to reach the Go stage, or go:embed fails before the web stage output lands.
 Dockerfile
 docker-compose.yml
 README.md
