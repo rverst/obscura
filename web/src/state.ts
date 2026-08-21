@@ -132,6 +132,33 @@ export function hasMore(): boolean {
   return !exhausted;
 }
 
+/**
+ * Places a freshly uploaded item into the loaded window.
+ *
+ * Not simply prepended: the timeline is ordered by capture time, and a photo
+ * taken in 2009 but uploaded today belongs in 2009. If it sorts older than
+ * anything loaded so far it is dropped here rather than shown in the wrong
+ * place -- it will arrive on its own once the user scrolls that far, or after
+ * the next reload.
+ */
+export function insertMedia(m: Media): void {
+  const current = items.value;
+  if (current.some((existing) => existing.id === m.id)) return;
+
+  const key = (x: Media) => x.taken_at ?? x.created_at;
+  const at = key(m);
+
+  const last = current[current.length - 1];
+  if (!exhausted && last && at < key(last)) return;
+
+  const idx = current.findIndex((existing) => key(existing) <= at);
+  if (idx < 0) {
+    items.value = [...current, m];
+    return;
+  }
+  items.value = [...current.slice(0, idx), m, ...current.slice(idx)];
+}
+
 function messageOf(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
