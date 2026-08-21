@@ -1,0 +1,20 @@
+services:
+  obscura:
+    build:
+      context: .
+      target: runtime
+    image: obscura:dev
+    ports:
+      # Bound to loopback on purpose. obscura speaks plain http; TLS belongs in
+      # a reverse proxy in front of it. Exposing this straight to the network
+      # would send the password over the wire in the clear.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - obscura-data:/data
+    restart: unless-stopped
+    # -dev drops the cookie's Secure flag, which is required to reach the app
+    # over http://localhost. Remove it once a TLS proxy is in front.
+    command: ["-addr", "0.0.0.0:8080", "-data", "/data", "-dev"]
+
+volumes:
+  obscura-data:
