@@ -8,9 +8,9 @@ different set of goals: upload instead of directory scanning, drag-and-drop
 custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
-> **Status: early.** Milestones 1 (authentication, key management), 2 (upload,
-> thumbnails, metadata), 3 (gallery UI), 4 (albums with drag-and-drop ordering)
-> and 5 (video) are done. Search, the trash and passkeys are still ahead.
+> **Status: early.** Milestones 1 to 6 are done: authentication and key
+> management, upload, the gallery, albums with drag-and-drop ordering, video,
+> and search, trash and PWA support. Passkeys and deployment polish remain.
 
 ## Security model
 
@@ -89,6 +89,33 @@ so seeking works without downloading the file first.
 ffmpeg is used only to pull a poster frame and read the duration, and it is
 optional: without it videos still upload, are stored and play, they simply get
 no still image.
+
+### Deleting
+
+Deleting is two steps. The first moves a photo to the trash, where it stays
+recoverable for 30 days; the second, behind a separate endpoint, is permanent. A
+self-hosted library often has no backup behind it, so a mis-click needs to stay
+reversible long enough for someone to notice.
+
+Trashing a photo does not disturb album curation: it leaves every album while it
+is in the trash and returns to its old position when restored.
+
+Expired items are cleared after a login rather than on a timer — the key exists
+only while someone is signed in, so there is no moment at which a background job
+could open the database by itself.
+
+### Search
+
+Filenames and camera names, as an ordinary full-text query inside the encrypted
+database. That is what encrypting the whole file rather than individual columns
+bought: no blind indexes, and no downloading the library to filter it in the
+browser.
+
+### Installing on a phone
+
+The app is installable. Thumbnails are cached for offline browsing, bounded to a
+few hundred so it cannot exhaust a phone's storage quota. The API is never
+cached — a stale library listing would be worse than being offline.
 
 ### Uploading
 
