@@ -7,6 +7,7 @@
 import { signal } from "@preact/signals";
 import { api, type Cursor, type Media, ApiError } from "./api";
 import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
+import { closeLightbox } from "./viewer";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
 
@@ -24,9 +25,6 @@ export const recoveryCode = signal<string | null>(null);
 export const items = signal<Media[]>([]);
 export const loading = signal(false);
 export const loadError = signal<string>("");
-/** The lightbox is open on this item, or closed when null. */
-export const lightbox = signal<Media | null>(null);
-
 let cursor: Cursor | undefined;
 let exhausted = false;
 
@@ -110,7 +108,7 @@ function resetLibrary(): void {
   cursor = undefined;
   exhausted = false;
   loadError.value = "";
-  lightbox.value = null;
+  closeLightbox();
 }
 
 /** Fetches the next page. Safe to call repeatedly; concurrent calls collapse. */

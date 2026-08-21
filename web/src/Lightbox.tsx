@@ -1,9 +1,9 @@
 import { useEffect } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
-import { items, lightbox } from "./state";
+import { closeLightbox, lightbox, lightboxScope } from "./viewer";
 
 export function Lightbox({ media }: { media: Media }) {
-  const all = items.value;
+  const all = lightboxScope.value;
   const index = all.findIndex((m) => m.id === media.id);
 
   const step = (delta: number) => {
@@ -17,7 +17,7 @@ export function Lightbox({ media }: { media: Media }) {
     const onKey = (e: KeyboardEvent) => {
       switch (e.key) {
         case "Escape":
-          lightbox.value = null;
+          closeLightbox();
           break;
         case "ArrowLeft":
           step(-1);
@@ -36,10 +36,10 @@ export function Lightbox({ media }: { media: Media }) {
       class="lightbox"
       onClick={(e) => {
         // Clicking the backdrop closes; clicking the photo or the panel must not.
-        if (e.target === e.currentTarget) lightbox.value = null;
+        if (e.target === e.currentTarget) closeLightbox();
       }}
     >
-      <button class="close" onClick={() => (lightbox.value = null)}>
+      <button class="close" onClick={closeLightbox}>
         Close
       </button>
 

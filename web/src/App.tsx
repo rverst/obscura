@@ -3,7 +3,8 @@ import { Login, RecoveryCodeNotice, Setup } from "./Auth";
 import { Gallery } from "./Gallery";
 import { Lightbox } from "./Lightbox";
 import { collapsed, Sidebar, toggleSidebar } from "./Sidebar";
-import { items, lightbox, logout, recoveryCode, screen, username, view } from "./state";
+import { items, logout, recoveryCode, screen, username, view } from "./state";
+import { lightbox } from "./viewer";
 
 export function App() {
   // The recovery code takes precedence over everything: it is shown once and

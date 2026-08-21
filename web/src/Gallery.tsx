@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
 import { layout, visibleRange, type Row } from "./layout";
-import { hasMore, items, lightbox, loadError, loading, loadMore } from "./state";
+import { hasMore, items, loadError, loading, loadMore } from "./state";
+import { openLightbox } from "./viewer";
 
 const TARGET_ROW_HEIGHT = 220;
 const MAX_ROW_HEIGHT = 380;
@@ -110,7 +111,7 @@ function Tile({ media, style }: { media: Media; style: Record<string, string> })
     <button
       class="tile"
       style={style}
-      onClick={() => (lightbox.value = media)}
+      onClick={() => openLightbox(media, items.value)}
       title={media.filename}
     >
       {media.has_thumb ? (
