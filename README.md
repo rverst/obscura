@@ -9,8 +9,8 @@ custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
 > **Status: early.** Milestones 1 (authentication, key management), 2 (upload,
-> thumbnails, metadata) and 3 (gallery UI) are done. Albums and drag-and-drop
-> ordering — the feature this exists for — are still ahead.
+> thumbnails, metadata), 3 (gallery UI) and 4 (albums with drag-and-drop
+> ordering) are done. Video, search and the trash are still ahead.
 
 ## Security model
 
@@ -65,6 +65,19 @@ curl -sX POST http://127.0.0.1:8080/api/setup \
 ```
 
 Write that recovery code down and store it away from the server.
+
+### Albums
+
+Albums are views onto the library, not containers: deleting an album never
+deletes photographs, and removing a photo from one leaves the photo alone.
+
+Each album keeps its own order. Dragging a photo writes exactly one row, whatever
+the album's size, because a position is a string that can always be subdivided
+rather than an integer that would renumber everything after it. Ten thousand
+photos appended to an album produce a four-character key.
+
+Uploading and reordering both live in an album's **edit mode**. Outside it the
+album is for looking at: nothing is draggable and there is no drop target.
 
 ### Uploading
 
