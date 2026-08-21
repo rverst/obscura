@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rverst/obscura/internal/blob"
@@ -34,6 +35,30 @@ func (s *Server) vault(r *http.Request) library.Vault {
 func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	opt := library.ListOptions{}
 	q := r.URL.Query()
+
+	// A search is a filtered listing, not a separate resource: the client
+	// renders the results with exactly the same grid.
+	if query := strings.TrimSpace(q.Get("q")); query != "" {
+		limit := 100
+		if v := q.Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				limit = n
+			}
+		}
+		hits, err := library.Search(r.Context(), s.vault(r), query, limit)
+		if err != nil {
+			s.fail(w, r, http.StatusInternalServerError, "search failed", err)
+			return
+		}
+		out := make([]map[string]any, 0, len(hits))
+		for _, m := range hits {
+			out = append(out, mediaJSON(m))
+		}
+		// No cursor: a search returns one page. Paging through results would
+		// need a stable ranking the FTS index does not promise.
+		writeJSON(w, http.StatusOK, map[string]any{"items": out, "query": query})
+		return
+	}
 
 	if v := q.Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -192,10 +217,19 @@ func (s *Server) handleCheckHash(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"exists": true, "media": mediaJSON(m)})
 }
 
-func (s *Server) lookupMedia(w http.ResponseWriter, r *http.Request) (*library.Media, bool) {
+// mediaID parses the id from the path.
+func (s *Server) mediaID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		s.fail(w, r, http.StatusBadRequest, "invalid media id", err)
+		return 0, false
+	}
+	return id, true
+}
+
+func (s *Server) lookupMedia(w http.ResponseWriter, r *http.Request) (*library.Media, bool) {
+	id, ok := s.mediaID(w, r)
+	if !ok {
 		return nil, false
 	}
 	m, err := library.Get(r.Context(), s.vault(r), id)

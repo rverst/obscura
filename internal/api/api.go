@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/rverst/obscura/internal/auth"
 	"github.com/rverst/obscura/internal/blob"
@@ -67,6 +68,14 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/media/{id}/thumb", s.requireSession(http.HandlerFunc(s.handleMediaContent("thumb"))))
 	mux.Handle("GET /api/media/{id}/preview", s.requireSession(http.HandlerFunc(s.handleMediaContent("preview"))))
 	mux.Handle("GET /api/media/{id}/original", s.requireSession(http.HandlerFunc(s.handleMediaContent("original"))))
+
+	// Trash. DELETE on the media resource is reversible; permanent deletion is
+	// a separate path, so no client destroys a photograph by mistyping a verb.
+	mux.Handle("GET /api/trash", s.requireSession(http.HandlerFunc(s.handleListTrash)))
+	mux.Handle("POST /api/trash/empty", s.requireSession(http.HandlerFunc(s.handleEmptyTrash)))
+	mux.Handle("DELETE /api/media/{id}", s.requireSession(http.HandlerFunc(s.handleTrashMedia)))
+	mux.Handle("POST /api/media/{id}/restore", s.requireSession(http.HandlerFunc(s.handleRestoreMedia)))
+	mux.Handle("DELETE /api/media/{id}/purge", s.requireSession(http.HandlerFunc(s.handlePurgeMedia)))
 
 	mux.Handle("GET /api/albums", s.requireSession(http.HandlerFunc(s.handleListAlbums)))
 	mux.Handle("POST /api/albums", s.requireSession(http.HandlerFunc(s.handleCreateAlbum)))
@@ -187,7 +196,33 @@ func (s *Server) finishLogin(w http.ResponseWriter, r *http.Request, userID int6
 		return
 	}
 	s.setCookie(w, sess)
+	s.purgeExpired(sess)
 	writeJSON(w, http.StatusOK, map[string]any{"username": sess.Username})
+}
+
+// purgeExpired clears anything past its retention deadline.
+//
+// Triggered by a login rather than a timer, because the key exists only while
+// someone is signed in -- there is no moment at which a background job could
+// open the database on its own. Detached from the request so a large clear-out
+// does not make signing in feel slow.
+func (s *Server) purgeExpired(sess *auth.Session) {
+	if s.Library == nil {
+		return
+	}
+	v := library.Vault{DB: sess.DB, DEK: sess.DEK, UserID: sess.UserID}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		n, err := s.Library.PurgeExpired(ctx, v)
+		if err != nil {
+			s.Log.Warn("purging expired trash failed", "err", err)
+			return
+		}
+		if n > 0 {
+			s.Log.Info("purged expired trash", "count", n)
+		}
+	}()
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
