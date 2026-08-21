@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { addToCurrentAlbum } from "./albums";
+import { useCallback, useRef, useState } from "preact/hooks";
 import { clearFinished, enqueue, tasks, uploading, type UploadTask } from "./upload";
 
 /**
@@ -12,28 +11,19 @@ import { clearFinished, enqueue, tasks, uploading, type UploadTask } from "./upl
 export function UploadPanel({ albumID }: { albumID?: number }) {
   const [over, setOver] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
-  const added = useRef<number[]>([]);
 
   const carriesFiles = (e: DragEvent) =>
     Array.from(e.dataTransfer?.types ?? []).includes("Files");
 
-  // Newly uploaded media is put into the album this panel belongs to, once the
-  // batch is quiet. Doing it per file would issue one request each.
-  useEffect(() => {
-    if (albumID === undefined) return;
-    if (uploading.value) return;
-    const fresh = tasks.value
-      .filter((t) => t.media && (t.status === "done" || t.status === "duplicate"))
-      .map((t) => t.media!.id)
-      .filter((id) => !added.current.includes(id));
-    if (fresh.length === 0) return;
-    added.current = [...added.current, ...fresh];
-    void addToCurrentAlbum(fresh);
-  }, [uploading.value, tasks.value, albumID]);
-
-  const accept = useCallback((files: File[]) => {
-    if (files.length > 0) enqueue(files);
-  }, []);
+  // The destination album is attached to each upload here, at the moment it is
+  // queued. Filing uploads afterwards, based on whichever album was open by
+  // then, put the first album's photos into the second one.
+  const accept = useCallback(
+    (files: File[]) => {
+      if (files.length > 0) enqueue(files, albumID);
+    },
+    [albumID],
+  );
 
   return (
     <section
@@ -78,13 +68,15 @@ export function UploadPanel({ albumID }: { albumID?: number }) {
           choose files
         </button>
       </p>
-      <UploadQueue />
+      <UploadQueue albumID={albumID} />
     </section>
   );
 }
 
-function UploadQueue() {
-  const list = tasks.value;
+function UploadQueue({ albumID }: { albumID?: number }) {
+  // Only this album's uploads. The task list is global so a batch survives
+  // navigation, but showing another album's files here would be confusing.
+  const list = tasks.value.filter((t) => t.albumID === albumID);
   if (list.length === 0) return null;
 
   const finished = list.filter((t) => t.status === "done" || t.status === "duplicate").length;

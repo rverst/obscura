@@ -6,6 +6,7 @@
 // multi-gigabyte video over because the wifi dropped for a second.
 
 import { signal } from "@preact/signals";
+import { addToAlbum } from "./albums";
 import { ApiError, type Media } from "./api";
 import { insertMedia } from "./state";
 
@@ -27,6 +28,14 @@ export interface UploadTask {
   progress: number;
   error?: string;
   media?: Media;
+  /**
+   * Album this upload was destined for, captured when it was queued.
+   *
+   * It belongs to the upload, not to whichever panel happens to be mounted.
+   * Deriving it from the currently open album meant that opening a second
+   * album re-filed every finished upload from the first one into it.
+   */
+  albumID?: number;
 }
 
 export const tasks = signal<UploadTask[]>([]);
@@ -53,7 +62,7 @@ let queue: UploadTask[] = [];
 let files = new Map<string, File>();
 let running = false;
 
-export function enqueue(selected: File[]): void {
+export function enqueue(selected: File[], albumID?: number): void {
   const added: UploadTask[] = [];
   for (const file of selected) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -64,6 +73,7 @@ export function enqueue(selected: File[]): void {
       size: file.size,
       status: "queued",
       progress: 0,
+      albumID,
     });
   }
   if (added.length === 0) return;
@@ -120,6 +130,11 @@ async function uploadOne(task: UploadTask, file: File): Promise<void> {
     const found = await checkHash(sum);
     if (found) {
       update(task.id, { status: "duplicate", progress: 1, media: found });
+      // A photo already in the library still belongs in this album -- that is
+      // exactly how someone adds an existing picture to a new collection.
+      if (task.albumID !== undefined) {
+        await addToAlbum(task.albumID, [found.id]);
+      }
       return;
     }
   }
@@ -163,6 +178,12 @@ async function uploadOne(task: UploadTask, file: File): Promise<void> {
     update(task.id, { status: "done", media: result.media });
   }
   insertMedia(result.media);
+
+  // Filed into the album this upload was queued for, not into whatever album
+  // happens to be open by the time it finishes.
+  if (task.albumID !== undefined) {
+    await addToAlbum(task.albumID, [result.media.id]);
+  }
 }
 
 // --- protocol pieces --------------------------------------------------------

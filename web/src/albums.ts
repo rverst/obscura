@@ -2,6 +2,7 @@
 
 import { signal } from "@preact/signals";
 import { ApiError, type Media } from "./api";
+import { forgetInViewer } from "./viewer";
 
 export interface Album {
   id: number;
@@ -136,6 +137,9 @@ export async function removeFromAlbum(mediaID: number): Promise<void> {
   if (!album) return;
   const previous = albumItems.value;
   albumItems.value = previous.filter((m) => m.id !== mediaID);
+  // Leaving it open would show a photo that is no longer part of what is being
+  // looked at, and stepping away from it with the arrows would be incoherent.
+  forgetInViewer(mediaID);
   try {
     await albumApi.removeItem(album.id, mediaID);
     await loadAlbums();
@@ -183,14 +187,42 @@ export async function moveItem(mediaID: number, toIndex: number): Promise<void> 
   }
 }
 
-/** Adds media to the album currently open. */
-export async function addToCurrentAlbum(mediaIDs: number[]): Promise<void> {
-  const album = currentAlbum.value;
-  if (!album || mediaIDs.length === 0) return;
+/**
+ * Adds media to a named album.
+ *
+ * Takes the album explicitly rather than using whichever one is open, so an
+ * upload started in one album cannot land in another because the user navigated
+ * while it was in flight.
+ */
+export async function addToAlbum(albumID: number, mediaIDs: number[]): Promise<void> {
+  if (mediaIDs.length === 0) return;
   try {
-    await albumApi.add(album.id, mediaIDs);
-    await openAlbum(album.id);
+    await albumApi.add(albumID, mediaIDs);
+    if (currentAlbum.value?.id === albumID) {
+      await refreshAlbumItems();
+    }
     await loadAlbums();
+  } catch (err) {
+    albumError.value = messageOf(err);
+  }
+}
+
+/**
+ * Reloads the open album's contents without touching edit mode.
+ *
+ * openAlbum deliberately leaves edit mode, which is right when navigating but
+ * wrong after an upload: it dropped the user out of editing mid-batch.
+ */
+export async function refreshAlbumItems(): Promise<void> {
+  const album = currentAlbum.value;
+  if (!album) return;
+  try {
+    const [meta, items] = await Promise.all([
+      albumApi.get(album.id),
+      albumApi.items(album.id),
+    ]);
+    currentAlbum.value = meta;
+    albumItems.value = items.items ?? [];
   } catch (err) {
     albumError.value = messageOf(err);
   }
