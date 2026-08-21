@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -469,4 +470,77 @@ func TestUndecodableUploadIsRejected(t *testing.T) {
 func sha256hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// Media ids are sequential, so /api/media/1/thumb names a different photograph
+// after a library is reset. Telling a browser that URL is immutable made it
+// serve the previous library's thumbnails and never ask again -- which is
+// exactly what was reported.
+func TestBareDerivativeURLIsRevalidated(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin(t)
+	m := mediaOf(t, h.uploadPhoto(t, "p.jpg", testPhoto(t, 400, 300), 32<<10))
+	id := itoa(int(m["id"].(float64)))
+
+	resp, _ := h.raw(t, "GET", "/api/media/"+id+"/thumb", nil, nil)
+	cc := resp.Header.Get("Cache-Control")
+	if strings.Contains(cc, "immutable") {
+		t.Fatalf("Cache-Control = %q -- a bare, reusable URL must not claim to be immutable", cc)
+	}
+	if !strings.Contains(cc, "no-cache") {
+		t.Fatalf("Cache-Control = %q, want revalidation", cc)
+	}
+	if resp.Header.Get("ETag") == "" {
+		t.Fatal("no ETag, so revalidation would refetch the whole image every time")
+	}
+}
+
+// A URL that names the blob it wants cannot go stale, so it may be cached hard.
+func TestVersionedDerivativeURLIsImmutable(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin(t)
+	m := mediaOf(t, h.uploadPhoto(t, "p.jpg", testPhoto(t, 400, 300), 32<<10))
+	id := itoa(int(m["id"].(float64)))
+
+	versions, ok := m["v"].(map[string]any)
+	if !ok {
+		t.Fatalf("no version tokens in the media object: %v", m)
+	}
+	token, _ := versions["thumb"].(string)
+	if token == "" {
+		t.Fatal("no thumb version token")
+	}
+
+	resp, _ := h.raw(t, "GET", "/api/media/"+id+"/thumb?v="+token, nil, nil)
+	cc := resp.Header.Get("Cache-Control")
+	if !strings.Contains(cc, "immutable") || !strings.Contains(cc, "max-age=") {
+		t.Fatalf("Cache-Control = %q, want a long immutable cache", cc)
+	}
+	// Never in a shared cache: these are someone's photographs.
+	if !strings.Contains(cc, "private") {
+		t.Fatalf("Cache-Control = %q, must be private", cc)
+	}
+
+	// A stale or guessed token must not unlock the long cache.
+	resp, _ = h.raw(t, "GET", "/api/media/"+id+"/thumb?v=wrongtoken", nil, nil)
+	if strings.Contains(resp.Header.Get("Cache-Control"), "immutable") {
+		t.Fatal("a mismatched version token was treated as immutable")
+	}
+}
+
+// Two different photographs must never share a derivative URL, or a cache will
+// serve one for the other.
+func TestVersionTokensDifferPerPhoto(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin(t)
+	a := mediaOf(t, h.uploadPhoto(t, "a.jpg", testPhoto(t, 400, 300), 32<<10))
+	b := mediaOf(t, h.uploadPhoto(t, "b.jpg", testPhoto(t, 500, 200), 32<<10))
+
+	va := a["v"].(map[string]any)
+	vb := b["v"].(map[string]any)
+	for _, variant := range []string{"thumb", "preview", "original"} {
+		if va[variant] == vb[variant] {
+			t.Errorf("%s token is identical for two different photos: %v", variant, va[variant])
+		}
+	}
 }

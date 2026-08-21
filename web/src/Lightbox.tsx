@@ -58,12 +58,12 @@ export function Lightbox({ media }: { media: Media }) {
         {media.kind === "video" ? (
           // Served straight from the encrypted blob with range support, so
           // seeking works without downloading the whole file first.
-          <video src={mediaURL(media.id, "original")} controls autoPlay />
+          <video src={mediaURL(media, "original")} controls autoPlay />
         ) : (
           <img
             // The preview, not the original: a 24 MP JPEG per photo would make
             // browsing painful over wifi for no visible gain on screen.
-            src={mediaURL(media.id, media.has_thumb ? "preview" : "original")}
+            src={mediaURL(media, media.has_thumb ? "preview" : "original")}
             alt={media.filename}
           />
         )}
@@ -123,7 +123,7 @@ function Info({ media }: { media: Media }) {
       </dl>
 
       <p style="margin-top:20px">
-        <a href={mediaURL(media.id, "original")} download={media.filename}>
+        <a href={mediaURL(media, "original")} download={media.filename}>
           Download original
         </a>
       </p>

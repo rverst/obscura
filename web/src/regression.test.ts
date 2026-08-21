@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { albumItems, currentAlbum, removeFromAlbum, type AlbumMedia } from "./albums";
-import type { Media } from "./api";
+import { mediaURL, type Media } from "./api";
 import { items } from "./state";
 import { enqueue, tasks } from "./upload";
 import { closeLightbox, lightbox, lightboxScope, openLightbox } from "./viewer";
@@ -166,5 +166,42 @@ describe("lightbox browses the collection it was opened from", () => {
     const album = [albumMedia(99, "a0")];
     openLightbox(album[0]!, album);
     expect(lightboxScope.value.findIndex((m) => m.id === 99)).toBe(0);
+  });
+});
+
+describe("derivative URLs carry a version", () => {
+  function withVersions(id: number, thumb: string, preview: string, original: string): Media {
+    return { ...media(id), v: { thumb, preview, original } };
+  }
+
+  // Reported: thumbnails and lightbox images showed photographs from an earlier
+  // test. Media ids are sequential, so /api/media/1/thumb points at a different
+  // picture after the library is reset -- and a cached copy is never
+  // revalidated. Naming the blob in the URL is what makes it safe to cache.
+  it("distinguishes two libraries that reuse the same media id", () => {
+    const before = withVersions(1, "aaa", "bbb", "ccc");
+    const after = withVersions(1, "xxx", "yyy", "zzz");
+
+    expect(mediaURL(before, "thumb")).not.toBe(mediaURL(after, "thumb"));
+    expect(mediaURL(before, "preview")).not.toBe(mediaURL(after, "preview"));
+  });
+
+  // The grid and the lightbox drew from different caches, which is why they
+  // disagreed. Both must resolve to the same versioned URL for the same photo.
+  it("gives grid and lightbox consistent URLs for one photo", () => {
+    const m = withVersions(7, "t7", "p7", "o7");
+    expect(mediaURL(m, "thumb")).toBe("/api/media/7/thumb?v=t7");
+    expect(mediaURL(m, "preview")).toBe("/api/media/7/preview?v=p7");
+  });
+
+  it("falls back to a bare URL when no token is known", () => {
+    // The server then revalidates rather than serving something stale.
+    expect(mediaURL(media(3), "thumb")).toBe("/api/media/3/thumb");
+    expect(mediaURL(3, "thumb")).toBe("/api/media/3/thumb");
+  });
+
+  it("escapes the token", () => {
+    const m = withVersions(1, "a b&c", "p", "o");
+    expect(mediaURL(m, "thumb")).toBe("/api/media/1/thumb?v=a%20b%26c");
   });
 });

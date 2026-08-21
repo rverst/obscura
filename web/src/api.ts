@@ -14,6 +14,13 @@ export interface MediaExif {
   focal_length?: number;
 }
 
+/** Opaque per-derivative cache tokens; see mediaURL. */
+export interface MediaVersions {
+  thumb: string;
+  preview: string;
+  original: string;
+}
+
 export interface Media {
   id: number;
   kind: "photo" | "video";
@@ -27,6 +34,7 @@ export interface Media {
   taken_at?: number;
   duration_ms?: number;
   has_thumb: boolean;
+  v?: MediaVersions;
   exif?: MediaExif;
   gps?: { lat: number; lon: number };
 }
@@ -123,7 +131,24 @@ export const api = {
   getMedia: (id: number) => request<Media>(`/api/media/${id}`),
 };
 
-/** URL of a stored derivative. Content is immutable, so these cache well. */
-export function mediaURL(id: number, variant: "thumb" | "preview" | "original"): string {
-  return `/api/media/${id}/${variant}`;
+/**
+ * URL of a stored derivative.
+ *
+ * The version token matters. Media ids are sequential, so a bare
+ * /api/media/1/thumb is a different photograph after the library is reset --
+ * and a browser that cached it has no reason to ask again. Naming the blob in
+ * the URL makes it genuinely immutable, so it can be cached hard and is still
+ * always correct.
+ */
+export function mediaURL(
+  media: Media | number,
+  variant: "thumb" | "preview" | "original",
+): string {
+  if (typeof media === "number") {
+    // No version to hand; the server falls back to revalidating.
+    return `/api/media/${media}/${variant}`;
+  }
+  const token = media.v?.[variant];
+  const base = `/api/media/${media.id}/${variant}`;
+  return token ? `${base}?v=${encodeURIComponent(token)}` : base;
 }

@@ -12,12 +12,18 @@ import (
 	"github.com/rverst/obscura/internal/library"
 )
 
-// derivativeMaxAge is how long a browser may reuse a thumbnail.
+// derivativeMaxAge is how long a browser may reuse a derivative whose URL names
+// the exact content it wants.
 //
-// Derivatives are immutable: reprocessing produces a new blob id, so a cached
-// copy can never be stale. The cache is marked private because these are
-// someone's photos and must not be held by a shared proxy.
-const derivativeMaxAge = 30 * 24 * time.Hour
+// Only a versioned URL may be cached this way. The bare path carries a media
+// id, and ids are sequential: after a database is reset, /api/media/1/thumb is
+// a different photograph. Marking that immutable told browsers never to ask
+// again, and they duly served the previous library's thumbnails -- with the
+// lightbox and the grid disagreeing, because their entries expired differently.
+//
+// Private because these are someone's photographs and must never sit in a
+// shared proxy.
+const derivativeMaxAge = 365 * 24 * time.Hour
 
 func (s *Server) vault(r *http.Request) library.Vault {
 	sess := sessionFrom(r)
@@ -132,11 +138,20 @@ func (s *Server) handleMediaContent(variant string) http.HandlerFunc {
 		defer rd.Close()
 
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Cache-Control",
-			fmt.Sprintf("private, max-age=%d, immutable", int(derivativeMaxAge.Seconds())))
 		// The blob id is random and changes whenever content is regenerated,
 		// which makes it an exact ETag.
 		w.Header().Set("ETag", `"`+blobID+`"`)
+
+		// A URL that names the content it wants can be cached indefinitely,
+		// because a different blob means a different URL. A bare path cannot:
+		// it must be revalidated, and the ETag makes that cheap. Correctness
+		// deliberately does not depend on the client remembering the parameter.
+		if r.URL.Query().Get("v") == blobID {
+			w.Header().Set("Cache-Control",
+				fmt.Sprintf("private, max-age=%d, immutable", int(derivativeMaxAge.Seconds())))
+		} else {
+			w.Header().Set("Cache-Control", "private, no-cache")
+		}
 		if variant == "original" {
 			w.Header().Set("Content-Disposition",
 				`attachment; filename*=UTF-8''`+urlEncode(m.Filename))
@@ -207,6 +222,14 @@ func mediaJSON(m *library.Media) map[string]any {
 		"height":     m.Height,
 		"created_at": m.CreatedAt.Unix(),
 		"has_thumb":  m.BlobThumb != "",
+		// Cache-busting tokens, one per derivative. Opaque to the client: it
+		// only needs them to build a URL that changes when the content does.
+		// The values are random blob ids and reveal nothing about the picture.
+		"v": map[string]any{
+			"thumb":    m.BlobThumb,
+			"preview":  m.BlobPreview,
+			"original": m.BlobOrig,
+		},
 	}
 	if m.TakenAt != nil {
 		out["taken_at"] = m.TakenAt.Unix()

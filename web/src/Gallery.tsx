@@ -116,7 +116,7 @@ function Tile({ media, style }: { media: Media; style: Record<string, string> })
     >
       {media.has_thumb ? (
         <img
-          src={mediaURL(media.id, "thumb")}
+          src={mediaURL(media, "thumb")}
           alt={media.filename}
           // Native lazy loading on top of virtualisation: a row entering the
           // overscan area is in the DOM but need not fetch immediately.

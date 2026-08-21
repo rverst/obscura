@@ -126,7 +126,7 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
           }}
         >
           <img
-            src={mediaURL(m.id, "thumb")}
+            src={mediaURL(m, "thumb")}
             alt={m.filename}
             loading="lazy"
             decoding="async"
