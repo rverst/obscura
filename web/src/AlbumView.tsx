@@ -125,15 +125,20 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
             if (!canEdit) openLightbox(m, items);
           }}
         >
-          <img
-            src={mediaURL(m, "thumb")}
-            alt={m.filename}
-            loading="lazy"
-            decoding="async"
-            // Images are draggable by default, and that native drag would fight
-            // the tile's own. Outside edit mode nothing should drag at all.
-            draggable={false}
-          />
+          {m.has_thumb ? (
+            <img
+              src={mediaURL(m, "thumb")}
+              alt={m.filename}
+              loading="lazy"
+              decoding="async"
+              // Images are draggable by default, and that native drag would
+              // fight the tile's own. Outside edit mode nothing should drag.
+              draggable={false}
+            />
+          ) : (
+            <span class="no-poster">{m.kind === "video" ? "video" : "no preview"}</span>
+          )}
+          {m.kind === "video" && m.has_thumb && <span class="video-badge">video</span>}
           {canEdit && (
             <button
               class="remove"

@@ -172,6 +172,20 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .tile img.loaded { opacity: 1; }
 .tile:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* Shown when a video has no still: undecodable, or uploaded before ffmpeg was
+   installed. The file is fine and plays; only the preview is missing. */
+.no-poster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .tile .video-badge {
   position: absolute;
   right: 6px;
@@ -348,6 +362,18 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 /* Marks the slot the photo would land in, on the leading edge so the direction
    of the move is unambiguous. */
 .album-tile.over { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+.album-tile .video-badge {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  pointer-events: none;
+}
 
 .album-tile .remove {
   position: absolute;

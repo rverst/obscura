@@ -104,6 +104,16 @@ function GridRow({ row }: { row: Row }) {
   );
 }
 
+/** Runtime as m:ss, or a plain marker when the duration is unknown. */
+export function durationLabel(media: Media): string {
+  const ms = media.duration_ms ?? 0;
+  if (ms <= 0) return "video";
+  const total = Math.round(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function Tile({ media, style }: { media: Media; style: Record<string, string> }) {
   const [loaded, setLoaded] = useState(false);
 
@@ -132,10 +142,11 @@ function Tile({ media, style }: { media: Media; style: Record<string, string> })
           onLoad={() => setLoaded(true)}
         />
       ) : (
-        // Videos have no poster frame until M5.
-        <span class="video-badge">video</span>
+        // A video whose first frames could not be decoded, or that predates
+        // ffmpeg being installed.
+        <span class="no-poster">video</span>
       )}
-      {media.kind === "video" && media.has_thumb && <span class="video-badge">video</span>}
+      {media.kind === "video" && <span class="video-badge">{durationLabel(media)}</span>}
     </button>
   );
 }

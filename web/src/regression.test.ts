@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { albumItems, currentAlbum, removeFromAlbum, type AlbumMedia } from "./albums";
 import { mediaURL, type Media } from "./api";
+import { durationLabel } from "./Gallery";
 import { items } from "./state";
 import { enqueue, tasks } from "./upload";
 import { closeLightbox, lightbox, lightboxScope, openLightbox } from "./viewer";
@@ -203,5 +204,20 @@ describe("derivative URLs carry a version", () => {
   it("escapes the token", () => {
     const m = withVersions(1, "a b&c", "p", "o");
     expect(mediaURL(m, "thumb")).toBe("/api/media/1/thumb?v=a%20b%26c");
+  });
+});
+
+describe("video tiles", () => {
+  it("shows a runtime instead of a generic marker", () => {
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 95_000 })).toBe("1:35");
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 5_000 })).toBe("0:05");
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 3_600_000 })).toBe("60:00");
+  });
+
+  // A clip ffmpeg could not probe, or one uploaded before ffmpeg was installed.
+  // It still plays, so the tile must say "video" rather than "0:00".
+  it("falls back when the duration is unknown", () => {
+    expect(durationLabel({ ...media(1), kind: "video" })).toBe("video");
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 0 })).toBe("video");
   });
 });
