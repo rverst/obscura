@@ -14,7 +14,7 @@ help:
 # --- Docker (the authoritative path) ----------------------------------------
 
 .PHONY: test
-test: ## Run gofmt, vet and the test suite inside Docker
+test: ## Run every check inside Docker: frontend tests, gofmt, vet, Go tests
 	docker build --target test --progress=plain .
 
 .PHONY: build

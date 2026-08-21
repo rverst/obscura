@@ -13,6 +13,10 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ .
+# Type check and unit tests run here, in the stage that already has the
+# toolchain. Leaving them out of the image build would mean the authoritative
+# pipeline never runs them.
+RUN npm run test
 RUN npm run build
 
 # ---------- dependencies ----------------------------------------------------
