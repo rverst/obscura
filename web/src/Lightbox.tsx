@@ -1,5 +1,6 @@
 import { useEffect } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
+import { trashMedia } from "./trash";
 import { closeLightbox, lightbox, lightboxScope } from "./viewer";
 
 export function Lightbox({ media }: { media: Media }) {
@@ -41,6 +42,17 @@ export function Lightbox({ media }: { media: Media }) {
     >
       <button class="close" onClick={closeLightbox}>
         Close
+      </button>
+
+      {/* Moves the photo to the trash, where it stays recoverable for thirty
+          days. Until now the only delete in the interface removed a photo from
+          an album, which is not the same thing and was reported as confusing. */}
+      <button
+        class="trash-button"
+        title="Move to trash"
+        onClick={() => void trashMedia(media.id)}
+      >
+        Delete
       </button>
 
       {index > 0 && (

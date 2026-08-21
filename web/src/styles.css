@@ -387,6 +387,55 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   color: #fff;
 }
 
+.sidebar .search {
+  width: 100%;
+  padding: 7px 10px;
+  margin-bottom: 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.sidebar .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.album-tile.trashed img { opacity: 0.55; }
+.album-tile .deadline {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.trash-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+}
+.trash-actions button { flex: 1; padding: 4px 6px; font-size: 12px; }
+
+.lightbox .trash-button {
+  position: absolute;
+  top: 12px;
+  right: 328px;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.55);
+}
+.lightbox .trash-button:hover { border-color: var(--danger); color: var(--danger); }
+
+@media (max-width: 720px) {
+  .lightbox .trash-button { right: 12px; }
+}
+
 .edit-hint {
   margin: 0 0 12px;
   font-size: 13px;

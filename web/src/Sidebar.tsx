@@ -2,6 +2,7 @@ import { signal } from "@preact/signals";
 import { useState } from "preact/hooks";
 import { albums, createAlbum, currentAlbum, openAlbum } from "./albums";
 import { view } from "./state";
+import { clearSearch, runSearch, searchQuery } from "./trash";
 
 const COLLAPSED_KEY = "obscura.sidebar.collapsed";
 
@@ -48,17 +49,33 @@ export function Sidebar() {
     setCreating(false);
     if (album) {
       view.value = "album";
+      clearSearch();
       void openAlbum(album.id);
     }
   };
 
   return (
     <nav class="sidebar">
+      <input
+        class="search"
+        type="search"
+        placeholder="Search"
+        value={searchQuery.value}
+        onInput={(e) => {
+          const q = (e.target as HTMLInputElement).value;
+          void runSearch(q);
+          // Typing switches to results and stops when the box is cleared, so
+          // there is no separate "search mode" to leave.
+          view.value = q.trim() ? "search" : "all";
+        }}
+      />
+
       <button
         class={`nav-item ${view.value === "all" ? "active" : ""}`}
         onClick={() => {
           view.value = "all";
           currentAlbum.value = null;
+          clearSearch();
         }}
       >
         All photos
@@ -92,6 +109,17 @@ export function Sidebar() {
         <p class="nav-empty">No albums yet.</p>
       )}
 
+      <button
+        class={`nav-item ${view.value === "trash" ? "active" : ""}`}
+        onClick={() => {
+          view.value = "trash";
+          currentAlbum.value = null;
+          clearSearch();
+        }}
+      >
+        Trash
+      </button>
+
       {albums.value.map((a) => (
         <button
           key={a.id}
@@ -100,6 +128,7 @@ export function Sidebar() {
           }`}
           onClick={() => {
             view.value = "album";
+            clearSearch();
             void openAlbum(a.id);
           }}
           title={a.title}

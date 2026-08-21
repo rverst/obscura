@@ -12,7 +12,7 @@ import { closeLightbox } from "./viewer";
 export type Screen = "loading" | "setup" | "login" | "gallery";
 
 /** Which part of the library the main area is showing. */
-export type View = "all" | "album";
+export type View = "all" | "album" | "trash" | "search";
 
 export const screen = signal<Screen>("loading");
 export const view = signal<View>("all");

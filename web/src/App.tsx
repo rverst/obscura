@@ -2,7 +2,9 @@ import { AlbumView } from "./AlbumView";
 import { Login, RecoveryCodeNotice, Setup } from "./Auth";
 import { Gallery } from "./Gallery";
 import { Lightbox } from "./Lightbox";
+import { SearchView } from "./SearchView";
 import { collapsed, Sidebar, toggleSidebar } from "./Sidebar";
+import { TrashView } from "./TrashView";
 import { items, logout, recoveryCode, screen, username, view } from "./state";
 import { lightbox } from "./viewer";
 
@@ -42,7 +44,17 @@ export function App() {
           </header>
           <div class="body">
             <Sidebar />
-            <main class="main">{view.value === "album" ? <AlbumView /> : <Gallery />}</main>
+            <main class="main">
+              {view.value === "album" ? (
+                <AlbumView />
+              ) : view.value === "trash" ? (
+                <TrashView />
+              ) : view.value === "search" ? (
+                <SearchView />
+              ) : (
+                <Gallery />
+              )}
+            </main>
           </div>
           {lightbox.value && <Lightbox media={lightbox.value} />}
         </div>

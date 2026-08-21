@@ -39,6 +39,12 @@ export interface Media {
   gps?: { lat: number; lon: number };
 }
 
+/** A photo in the trash, carrying its deletion deadline. */
+export interface TrashedMedia extends Media {
+  deleted_at: number;
+  purge_at: number;
+}
+
 export interface Cursor {
   before: number;
   before_id: number;
@@ -118,6 +124,17 @@ export const api = {
     }),
 
   logout: () => request<void>("/api/logout", { method: "POST" }),
+
+  search: (query: string, limit = 100) => {
+    const q = new URLSearchParams({ q: query, limit: String(limit) });
+    return request<MediaPage>(`/api/media?${q}`);
+  },
+
+  trash: (id: number) => request<void>(`/api/media/${id}`, { method: "DELETE" }),
+  restore: (id: number) => request<void>(`/api/media/${id}/restore`, { method: "POST" }),
+  purge: (id: number) => request<void>(`/api/media/${id}/purge`, { method: "DELETE" }),
+  listTrash: () => request<{ items: TrashedMedia[] }>("/api/trash"),
+  emptyTrash: () => request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
 
   listMedia: (cursor?: Cursor, limit = 100) => {
     const q = new URLSearchParams({ limit: String(limit) });
