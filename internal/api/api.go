@@ -68,6 +68,19 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/media/{id}/preview", s.requireSession(http.HandlerFunc(s.handleMediaContent("preview"))))
 	mux.Handle("GET /api/media/{id}/original", s.requireSession(http.HandlerFunc(s.handleMediaContent("original"))))
 
+	mux.Handle("GET /api/albums", s.requireSession(http.HandlerFunc(s.handleListAlbums)))
+	mux.Handle("POST /api/albums", s.requireSession(http.HandlerFunc(s.handleCreateAlbum)))
+	mux.Handle("GET /api/albums/{id}", s.requireSession(http.HandlerFunc(s.handleGetAlbum)))
+	mux.Handle("PATCH /api/albums/{id}", s.requireSession(http.HandlerFunc(s.handleUpdateAlbum)))
+	mux.Handle("DELETE /api/albums/{id}", s.requireSession(http.HandlerFunc(s.handleDeleteAlbum)))
+	mux.Handle("PUT /api/albums/{id}/cover", s.requireSession(http.HandlerFunc(s.handleSetAlbumCover)))
+
+	mux.Handle("GET /api/albums/{id}/items", s.requireSession(http.HandlerFunc(s.handleAlbumItems)))
+	mux.Handle("POST /api/albums/{id}/items", s.requireSession(http.HandlerFunc(s.handleAddToAlbum)))
+	mux.Handle("DELETE /api/albums/{id}/items/{mediaID}", s.requireSession(http.HandlerFunc(s.handleRemoveFromAlbum)))
+	// The move endpoint names neighbours rather than an index -- see the handler.
+	mux.Handle("PATCH /api/albums/{id}/items/{mediaID}/position", s.requireSession(http.HandlerFunc(s.handleMoveInAlbum)))
+
 	// Registered last and on the bare root, so it catches only what the API
 	// routes above did not claim.
 	if s.Assets != nil {
