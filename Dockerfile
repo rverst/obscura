@@ -15,6 +15,9 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 # Runs on the BUILD platform, never cross-compiled: cross-compiled test binaries
 # could not be executed here without emulation.
 FROM deps AS test
+# The thumbnailer shells out to vipsthumbnail, so without it those tests would
+# silently skip and the suite would look green while covering nothing.
+RUN apk add --no-cache vips-tools
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
@@ -40,12 +43,15 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /out/obscurad ./cmd/obscurad
 
 # ---------- runtime ---------------------------------------------------------
-# Alpine rather than scratch: M2 will need ffmpeg for video poster frames, and
-# adding it to an existing base is a one-line change. wget (busybox) also gives
-# us a healthcheck without baking one into the binary.
+# Alpine rather than scratch: obscura shells out to vipsthumbnail and ffmpeg, so
+# the runtime needs a package manager rather than an empty filesystem. busybox
+# wget also serves as a healthcheck without baking one into the binary.
 FROM alpine:3.22 AS runtime
 
-RUN apk add --no-cache ca-certificates tzdata && \
+# vips-tools provides vipsthumbnail, which obscura runs as a subprocess rather
+# than linking through cgo -- that is what keeps the build cgo-free and the
+# arm64 cross-build a single command. ffmpeg is for video poster frames (M5).
+RUN apk add --no-cache ca-certificates tzdata vips-tools ffmpeg && \
     adduser -D -u 10001 -h /data obscura
 
 COPY --from=build /out/obscurad /usr/local/bin/obscurad

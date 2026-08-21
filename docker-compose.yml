@@ -11,6 +11,12 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - obscura-data:/data
+    tmpfs:
+      # libvips falls back to a memory-mapped temp file for images too large to
+      # hold in RAM. Backing /tmp with tmpfs keeps that copy out of persistent
+      # storage -- otherwise plaintext could survive on disk behind the
+      # encryption.
+      - /tmp:size=512m,mode=1777
     restart: unless-stopped
     # -dev drops the cookie's Secure flag, which is required to reach the app
     # over http://localhost. Remove it once a TLS proxy is in front.
