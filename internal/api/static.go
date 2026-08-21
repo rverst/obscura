@@ -2,6 +2,7 @@ package api
 
 import (
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strconv"
@@ -14,6 +15,13 @@ import (
 // entry HTML is the opposite and must never be cached, or a browser keeps
 // loading an old bundle after an upgrade.
 const assetMaxAge = 365 * 24 * 60 * 60
+
+func init() {
+	// Go does not know this extension, so the manifest would go out as
+	// text/plain -- which some browsers refuse, leaving the app uninstallable
+	// for a reason that shows up nowhere obvious.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // staticHandler serves the embedded frontend.
 //
@@ -46,9 +54,16 @@ func staticHandler(assets fs.FS, built bool) http.Handler {
 
 		if name != "" && name != "index.html" {
 			if _, err := fs.Stat(assets, name); err == nil {
-				if strings.HasPrefix(name, "assets/") {
+				switch {
+				case strings.HasPrefix(name, "assets/"):
 					// Fingerprinted, therefore safe to cache for a long time.
 					w.Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(assetMaxAge)+", immutable")
+				case name == "sw.js":
+					// A cached service worker would keep serving an old app
+					// forever: it is the thing that decides what else is
+					// cached, so it must never be stale itself.
+					w.Header().Set("Cache-Control", "no-cache")
+					w.Header().Set("Service-Worker-Allowed", "/")
 				}
 				files.ServeHTTP(w, r)
 				return

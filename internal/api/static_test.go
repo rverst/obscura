@@ -121,3 +121,50 @@ func TestTraversalIsContained(t *testing.T) {
 		}
 	}
 }
+
+// A cached service worker keeps serving an old application forever: it is the
+// thing that decides what else gets cached, so it must never be stale itself.
+func TestServiceWorkerIsNotCached(t *testing.T) {
+	assets := testAssets()
+	assets["sw.js"] = &fstest.MapFile{Data: []byte("self.addEventListener('fetch', () => {})")}
+
+	resp, body := get(t, staticHandler(assets, true), "/sw.js")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if !strings.Contains(body, "addEventListener") {
+		t.Fatalf("body = %q", body)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", cc)
+	}
+	// Needed for a worker served from the root to control the whole scope.
+	if resp.Header.Get("Service-Worker-Allowed") != "/" {
+		t.Fatal("Service-Worker-Allowed is not set")
+	}
+}
+
+func TestManifestIsServed(t *testing.T) {
+	assets := testAssets()
+	assets["manifest.webmanifest"] = &fstest.MapFile{Data: []byte(`{"name":"obscura"}`)}
+
+	resp, body := get(t, staticHandler(assets, true), "/manifest.webmanifest")
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if !strings.Contains(body, "obscura") {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+// Go does not know the .webmanifest extension, so without help the manifest
+// goes out as text/plain and some browsers refuse to install the app.
+func TestManifestHasTheRightContentType(t *testing.T) {
+	assets := testAssets()
+	assets["manifest.webmanifest"] = &fstest.MapFile{Data: []byte(`{"name":"obscura"}`)}
+
+	resp, _ := get(t, staticHandler(assets, true), "/manifest.webmanifest")
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/manifest+json") {
+		t.Fatalf("Content-Type = %q, want application/manifest+json", ct)
+	}
+}
