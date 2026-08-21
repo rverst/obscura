@@ -19,6 +19,13 @@ const mediaColumns = `
 	blob_orig, blob_preview, blob_thumb, created_at`
 
 func scanMedia(sc interface{ Scan(...any) error }) (*Media, error) {
+	return scanMediaWithPrefix(sc)
+}
+
+// scanMediaWithPrefix scans a row whose media columns are preceded by extra
+// destinations, for queries that select something alongside them -- an album's
+// sort key, for instance.
+func scanMediaWithPrefix(sc interface{ Scan(...any) error }, leading ...any) (*Media, error) {
 	var (
 		m           Media
 		mime        sql.NullString
@@ -40,13 +47,14 @@ func scanMedia(sc interface{ Scan(...any) error }) (*Media, error) {
 		thumb       sql.NullString
 		createdAt   int64
 	)
-	if err := sc.Scan(
+	dest := append(leading,
 		&m.ID, &m.Kind, &m.Filename, &mime, &m.Bytes, &m.SHA256,
 		&width, &height, &orientation, &duration,
 		&takenAt, &cameraMake, &cameraModel, &lens, &iso, &fNumber, &exposure, &focalLen,
 		&gpsLat, &gpsLon,
 		&m.BlobOrig, &preview, &thumb, &createdAt,
-	); err != nil {
+	)
+	if err := sc.Scan(dest...); err != nil {
 		return nil, err
 	}
 
