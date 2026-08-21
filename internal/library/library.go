@@ -138,6 +138,24 @@ func (l *Library) Ingest(ctx context.Context, v Vault, in Ingestion) (*Media, er
 		return nil, err
 	}
 
+	// The unique index on (user_id, sha256) covers trashed rows, so uploading
+	// a photo that is sitting in the trash would otherwise fail on a constraint
+	// violation -- which from the outside looks like a broken upload rather
+	// than the photo already being there. Bring it back instead.
+	if id, err := findTrashedBySHA256(ctx, v, in.SHA256); err == nil {
+		_ = l.blobs.Remove(in.BlobID)
+		if err := Restore(ctx, v, id); err != nil {
+			return nil, err
+		}
+		restored, err := Get(ctx, v, id)
+		if err != nil {
+			return nil, err
+		}
+		return restored, ErrDuplicate
+	} else if !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+
 	m := &Media{
 		Kind:      kindOf(in.Filename),
 		Filename:  filepath.Base(in.Filename),
