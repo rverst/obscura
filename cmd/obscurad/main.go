@@ -22,6 +22,7 @@ import (
 	"github.com/rverst/obscura/internal/media"
 	"github.com/rverst/obscura/internal/store"
 	"github.com/rverst/obscura/internal/upload"
+	"github.com/rverst/obscura/web"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -103,14 +104,21 @@ func run() error {
 		return err
 	}
 
+	assets, err := web.Assets()
+	if err != nil {
+		return err
+	}
+
 	srv := &api.Server{
-		Slots:    slots,
-		Sessions: sessions,
-		Library:  lib,
-		Uploads:  uploads,
-		Blobs:    blobs,
-		Log:      log,
-		Secure:   !*dev,
+		Assets:      assets,
+		AssetsBuilt: web.Built(),
+		Slots:       slots,
+		Sessions:    sessions,
+		Library:     lib,
+		Uploads:     uploads,
+		Blobs:       blobs,
+		Log:         log,
+		Secure:      !*dev,
 	}
 
 	httpSrv := &http.Server{
@@ -148,7 +156,11 @@ func run() error {
 		"initialized", initialized,
 		"cookie_secure", !*dev,
 		"workers", *concurrency,
-		"max_upload", *maxUpload)
+		"max_upload", *maxUpload,
+		"frontend", web.Built())
+	if !web.Built() {
+		log.Warn("no frontend embedded -- API only; run `npm run build` in web/ or use the Docker image")
+	}
 	if !initialized {
 		log.Info(`not initialized yet -- POST /api/setup with {"username","password"}`)
 	}

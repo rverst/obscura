@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 
@@ -25,6 +26,13 @@ type Server struct {
 	Uploads  *upload.Manager
 	Blobs    *blob.Store
 	Log      *slog.Logger
+
+	// Assets is the embedded frontend. When nil the API still works and the
+	// UI routes explain that no frontend was built, which is a useful state
+	// during development and for API-only deployments.
+	Assets fs.FS
+	// AssetsBuilt distinguishes a real build from the committed placeholder.
+	AssetsBuilt bool
 
 	// Secure controls the cookie's Secure flag. Always true in production
 	// behind TLS; only switchable for local development over http, because
@@ -59,6 +67,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/media/{id}/thumb", s.requireSession(http.HandlerFunc(s.handleMediaContent("thumb"))))
 	mux.Handle("GET /api/media/{id}/preview", s.requireSession(http.HandlerFunc(s.handleMediaContent("preview"))))
 	mux.Handle("GET /api/media/{id}/original", s.requireSession(http.HandlerFunc(s.handleMediaContent("original"))))
+
+	// Registered last and on the bare root, so it catches only what the API
+	// routes above did not claim.
+	if s.Assets != nil {
+		mux.Handle("/", staticHandler(s.Assets, s.AssetsBuilt))
+	}
 
 	return mux
 }

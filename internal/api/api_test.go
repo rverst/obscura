@@ -75,6 +75,31 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, srv: srv, client: &http.Client{Jar: jar}, dataDir: dataDir}
 }
 
+// newServerWithAssets builds a Server whose routes include the static handler,
+// for tests about the boundary between API routes and the SPA fallback.
+func newServerWithAssets(t *testing.T) *Server {
+	t.Helper()
+	dataDir := t.TempDir()
+	authDB, err := store.OpenPlain(filepath.Join(dataDir, "auth.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { authDB.Close() })
+	if err := store.Migrate(authDB, store.SetAuth); err != nil {
+		t.Fatal(err)
+	}
+	sessions := auth.NewManager(dataDir, time.Hour)
+	t.Cleanup(sessions.CloseAll)
+
+	return &Server{
+		Slots:       auth.NewStore(authDB),
+		Sessions:    sessions,
+		Assets:      testAssets(),
+		AssetsBuilt: true,
+		Log:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
 func (h *harness) do(method, path string, body any) (int, map[string]any) {
 	h.t.Helper()
 	var rdr io.Reader
