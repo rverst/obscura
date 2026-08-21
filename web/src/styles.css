@@ -250,3 +250,99 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   .lightbox .info { flex: 0 0 auto; max-height: 42%; border-left: 0; border-top: 1px solid var(--border); }
   .lightbox .nav.next { right: 12px; }
 }
+
+/* --- upload --------------------------------------------------------------- */
+
+/* Only rendered while a drag carrying files is over the window, so it never
+   sits between the viewer and the photographs. */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  /* The overlay must not eat the drop event it exists to advertise. */
+  pointer-events: none;
+}
+.drop-hint {
+  border: 2px dashed var(--accent);
+  border-radius: 16px;
+  padding: 40px 64px;
+  font-size: 18px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.upload-queue {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 15;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.upload-queue header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.upload-queue header .failed { color: var(--danger); }
+.upload-queue header .dismiss {
+  margin-left: auto;
+  padding: 3px 9px;
+  font-size: 12px;
+}
+.upload-queue ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Long batches scroll inside the panel instead of growing off screen. */
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.upload-queue .task {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.upload-queue .task:last-child { border-bottom: 0; }
+.upload-queue .row { display: flex; gap: 10px; align-items: baseline; }
+.upload-queue .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-queue .state {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.upload-queue .task.done .state { color: #5fca7a; }
+.upload-queue .task.duplicate .state { color: var(--muted); }
+.upload-queue .task.error .state { color: var(--danger); }
+.upload-queue .err { color: var(--danger); font-size: 12px; margin-top: 3px; }
+
+.upload-queue .bar {
+  height: 3px;
+  margin-top: 6px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.upload-queue .bar .fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}

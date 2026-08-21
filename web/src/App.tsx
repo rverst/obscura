@@ -1,4 +1,5 @@
 import { Login, RecoveryCodeNotice, Setup } from "./Auth";
+import { DropZone } from "./DropZone";
 import { Gallery } from "./Gallery";
 import { Lightbox } from "./Lightbox";
 import { items, lightbox, logout, recoveryCode, screen, username } from "./state";
@@ -24,6 +25,7 @@ export function App() {
               {items.value.length} {items.value.length === 1 ? "photo" : "photos"}
             </span>
             <span class="spacer" />
+            <DropZone />
             <span class="count">{username.value}</span>
             <button onClick={() => void logout()}>Lock</button>
           </header>
