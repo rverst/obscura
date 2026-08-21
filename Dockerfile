@@ -29,9 +29,9 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 # Runs on the BUILD platform, never cross-compiled: cross-compiled test binaries
 # could not be executed here without emulation.
 FROM deps AS test
-# The thumbnailer shells out to vipsthumbnail, so without it those tests would
-# silently skip and the suite would look green while covering nothing.
-RUN apk add --no-cache vips-tools
+# The media code shells out to both, so without them those tests would silently
+# skip and the suite would look green while covering nothing.
+RUN apk add --no-cache vips-tools ffmpeg
 COPY . .
 COPY --from=web /web/dist ./web/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -70,13 +70,16 @@ FROM alpine:3.22 AS runtime
 # than linking through cgo -- that is what keeps the build cgo-free and the
 # arm64 cross-build a single command.
 #
-# ffmpeg is deliberately NOT installed yet. It is needed for video poster frames
-# in M5, and adding it costs 78MB on top of this image -- almost all of it
-# encoder libraries (libavcodec, x265, aom, SVT-AV1, spirv-tools) that obscura
-# will never invoke, because it does not transcode. When M5 lands, check whether
-# a decode-only build can be used instead of pulling the whole codec stack onto
-# an SD card.
-RUN apk add --no-cache ca-certificates tzdata vips-tools && \
+# ffmpeg provides the poster frames for videos. It costs 78MB, almost all of it
+# encoder libraries obscura never invokes -- it does not transcode. A
+# decode-only build was checked for and is not available as a package: Alpine's
+# libavcodec hard-depends on x265, aom, x264, vpx and the rest, so the only way
+# to avoid them would be building ffmpeg from source, which reintroduces exactly
+# the long build that cgo was rejected for.
+#
+# It is optional at runtime: without it videos still upload, are stored and
+# play, they simply get no still image. A slim image can leave it out.
+RUN apk add --no-cache ca-certificates tzdata vips-tools ffmpeg && \
     adduser -D -u 10001 -h /data obscura
 
 COPY --from=build /out/obscurad /usr/local/bin/obscurad
