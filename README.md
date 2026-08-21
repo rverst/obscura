@@ -8,9 +8,9 @@ different set of goals: upload instead of directory scanning, drag-and-drop
 custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
-> **Status: early.** Milestones 1 (authentication, key management) and 2 (upload,
-> thumbnails, metadata) are done. There is no user interface yet — the API is
-> usable with curl, see below.
+> **Status: early.** Milestones 1 (authentication, key management), 2 (upload,
+> thumbnails, metadata) and 3 (gallery UI) are done. Albums and drag-and-drop
+> ordering — the feature this exists for — are still ahead.
 
 ## Security model
 
@@ -102,6 +102,10 @@ Measured on arm64 against a running container, with 24 MP photos:
 The step on unlock is the WebAssembly SQLite runtime being instantiated — what a
 cgo-free build costs. Importing adds no memory at all, because image processing
 happens in a short-lived subprocess rather than in-process.
+
+The image is 113 MB, of which libvips and its format loaders are the bulk; the
+Go binary and the embedded frontend are 15 MB together. The frontend itself is
+37 kB, 14 kB gzipped.
 
 ### Running it for real
 
