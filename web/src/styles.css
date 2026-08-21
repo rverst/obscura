@@ -361,6 +361,12 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   color: #fff;
 }
 
+.edit-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .danger-zone { margin: 12px 0; font-size: 13px; }
 .danger-zone.confirming {
   display: flex;

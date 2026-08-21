@@ -10,7 +10,7 @@ import {
   removeFromAlbum,
   type AlbumMedia,
 } from "./albums";
-import { lightbox } from "./state";
+import { openLightbox } from "./viewer";
 import { UploadPanel } from "./UploadPanel";
 
 export function AlbumView() {
@@ -45,6 +45,16 @@ export function AlbumView() {
           <UploadPanel albumID={album.id} />
           <DangerZone albumID={album.id} title={album.title} />
         </>
+      )}
+
+      {editing.value && albumItems.value.length > 0 && (
+        // Says outright what the × does. An album is a view onto the library,
+        // so removing from it keeps the photograph -- but a bare × looks like
+        // a delete, and people should not have to try it to find out.
+        <p class="edit-hint">
+          Drag to reorder. × removes a photo from this album; it stays in your
+          library.
+        </p>
       )}
 
       {albumItems.value.length === 0 ? (
@@ -112,7 +122,7 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
             onDrop(index);
           }}
           onClick={() => {
-            if (!canEdit) lightbox.value = m;
+            if (!canEdit) openLightbox(m, items);
           }}
         >
           <img
@@ -127,7 +137,7 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
           {canEdit && (
             <button
               class="remove"
-              title="Remove from album"
+              title="Remove from this album (the photo stays in your library)"
               onClick={(e) => {
                 e.stopPropagation();
                 void removeFromAlbum(m.id);
