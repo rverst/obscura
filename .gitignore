@@ -1,6 +1,5 @@
 /obscurad
 /data/
-web/dist/
 *.db
 *.db-wal
 *.db-shm
