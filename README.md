@@ -8,8 +8,9 @@ different set of goals: upload instead of directory scanning, drag-and-drop
 custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
-> **Status: early.** Milestone 1 (authentication and key management) is done.
-> There is no upload, no thumbnailing and no user interface yet.
+> **Status: early.** Milestones 1 (authentication, key management) and 2 (upload,
+> thumbnails, metadata) are done. There is no user interface yet — the API is
+> usable with curl, see below.
 
 ## Security model
 
@@ -64,6 +65,43 @@ curl -sX POST http://127.0.0.1:8080/api/setup \
 ```
 
 Write that recovery code down and store it away from the server.
+
+### Uploading
+
+Uploads are chunked and resumable, because a multi-gigabyte video pushed over
+wifi to a Pi that dies at 90% is the normal case rather than the edge case.
+
+1. **Ask first.** `POST /api/media/check` with the file's SHA-256 (hex) answers
+   whether that content is already stored. The client hashes locally, so
+   re-adding a folder costs nothing.
+2. **Open an upload.** `POST /api/uploads` with `{"filename":…,"size":…}`
+   returns an `upload_id`.
+3. **Send chunks.** `PATCH /api/uploads/{id}` with the raw bytes as the body and
+   an `Upload-Offset` header saying where they belong. The response reports the
+   new offset.
+4. **Finish.** `POST /api/uploads/{id}/finish` derives the thumbnails, reads
+   EXIF and returns the media record.
+
+If a connection drops, `GET /api/uploads/{id}` reports how many bytes the server
+holds — resume from exactly there. Resending an overlap is safe; leaving a gap
+is refused with a 409.
+
+Media is served at `/api/media/{id}/thumb`, `/preview` and `/original`. The
+original answers range requests, which is what video scrubbing will use in M5.
+
+### Resource use
+
+Measured on arm64 against a running container, with 24 MP photos:
+
+| State | RSS |
+|---|---|
+| Locked (nobody logged in) | 15 MB |
+| Unlocked | 81 MB |
+| After importing 5 × 24 MP | 81 MB |
+
+The step on unlock is the WebAssembly SQLite runtime being instantiated — what a
+cgo-free build costs. Importing adds no memory at all, because image processing
+happens in a short-lived subprocess rather than in-process.
 
 ### Running it for real
 
