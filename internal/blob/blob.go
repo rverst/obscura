@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -74,60 +75,145 @@ func isHex(s string) bool {
 	return len(s)%2 == 0
 }
 
-// Put encrypts src into a new blob and returns its id, the plaintext size and
-// the SHA-256 of the plaintext.
+// Create starts a new blob and returns a writer that encrypts as it goes.
 //
-// The hash is computed on the way through rather than in a second pass so the
-// input is read exactly once -- it may be a several-gigabyte upload.
-func (s *Store) Put(dek []byte, src io.Reader) (id string, size int64, sum []byte, err error) {
-	id, err = NewID()
+// Content is encrypted from the very first byte, which is what lets a chunked
+// upload span several HTTP requests without ever parking plaintext on disk.
+// The alternative -- buffering the upload somewhere and encrypting at the end --
+// would leave a readable copy of every photo lying around for the duration of
+// its upload.
+func (s *Store) Create(dek []byte) (*Writer, error) {
+	id, err := NewID()
 	if err != nil {
-		return "", 0, nil, err
+		return nil, err
 	}
 	dst, err := s.path(id)
 	if err != nil {
-		return "", 0, nil, err
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-		return "", 0, nil, fmt.Errorf("blob: create bucket: %w", err)
+		return nil, fmt.Errorf("blob: create bucket: %w", err)
 	}
 
 	key, err := crypto.FileKey(dek, id)
 	if err != nil {
-		return "", 0, nil, err
+		return nil, err
 	}
-	defer crypto.Zero(key)
 
-	// Write to a temporary name and rename on success, so a crash mid-upload
-	// cannot leave a truncated blob that looks complete.
+	// Written under a .part name and renamed on commit, so a crash mid-upload
+	// cannot leave a truncated blob that later reads as complete.
 	tmp := dst + ".part"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
-		return "", 0, nil, fmt.Errorf("blob: create %s: %w", tmp, err)
+		crypto.Zero(key)
+		return nil, fmt.Errorf("blob: create %s: %w", tmp, err)
 	}
-	defer func() {
-		if err != nil {
-			f.Close()
-			os.Remove(tmp)
-		}
-	}()
+	enc, err := sio.EncryptWriter(f, sio.Config{Key: key})
+	if err != nil {
+		f.Close()
+		os.Remove(tmp)
+		crypto.Zero(key)
+		return nil, fmt.Errorf("blob: encrypt: %w", err)
+	}
+	return &Writer{
+		id: id, tmp: tmp, dst: dst,
+		f: f, enc: enc, key: key,
+		hasher: sha256.New(),
+	}, nil
+}
 
-	hasher := sha256.New()
-	counter := &countingReader{r: io.TeeReader(src, hasher)}
+// Writer accumulates encrypted content for one blob.
+//
+// Not safe for concurrent use: one upload is one sequential stream.
+type Writer struct {
+	id     string
+	tmp    string
+	dst    string
+	f      *os.File
+	enc    io.WriteCloser
+	key    []byte
+	hasher hash.Hash
+	n      int64
+	done   bool
+}
 
-	if _, err = sio.Encrypt(f, counter, sio.Config{Key: key}); err != nil {
-		return "", 0, nil, fmt.Errorf("blob: encrypt: %w", err)
+// ID is the identifier the blob will have once committed.
+func (w *Writer) ID() string { return w.id }
+
+// Size is the number of plaintext bytes written so far.
+func (w *Writer) Size() int64 { return w.n }
+
+func (w *Writer) Write(p []byte) (int, error) {
+	if w.done {
+		return 0, errors.New("blob: writer already closed")
 	}
-	if err = f.Sync(); err != nil {
-		return "", 0, nil, fmt.Errorf("blob: sync: %w", err)
+	n, err := w.enc.Write(p)
+	if n > 0 {
+		// Hash the plaintext on the way past. A second pass would mean
+		// decrypting the whole blob again just to learn its hash, and these
+		// can be several gigabytes.
+		w.hasher.Write(p[:n])
+		w.n += int64(n)
 	}
-	if err = f.Close(); err != nil {
-		return "", 0, nil, fmt.Errorf("blob: close: %w", err)
+	if err != nil {
+		return n, fmt.Errorf("blob: write: %w", err)
 	}
-	if err = os.Rename(tmp, dst); err != nil {
-		return "", 0, nil, fmt.Errorf("blob: publish: %w", err)
+	return n, nil
+}
+
+// Commit finalises the blob and returns its plaintext size and SHA-256.
+func (w *Writer) Commit() (size int64, sum []byte, err error) {
+	if w.done {
+		return 0, nil, errors.New("blob: writer already closed")
 	}
-	return id, counter.n, hasher.Sum(nil), nil
+	w.done = true
+	defer crypto.Zero(w.key)
+
+	// EncryptWriter.Close flushes the final package and closes the file with it.
+	if err := w.enc.Close(); err != nil {
+		os.Remove(w.tmp)
+		return 0, nil, fmt.Errorf("blob: finalise: %w", err)
+	}
+	if err := os.Rename(w.tmp, w.dst); err != nil {
+		os.Remove(w.tmp)
+		return 0, nil, fmt.Errorf("blob: publish: %w", err)
+	}
+	return w.n, w.hasher.Sum(nil), nil
+}
+
+// Abort discards a partial blob. Safe to call after Commit, where it does
+// nothing -- callers defer it to cover the error paths.
+func (w *Writer) Abort() error {
+	if w.done {
+		return nil
+	}
+	w.done = true
+	crypto.Zero(w.key)
+	w.enc.Close()
+	w.f.Close()
+	if err := os.Remove(w.tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("blob: discard %s: %w", w.tmp, err)
+	}
+	return nil
+}
+
+// Put stores src as a single blob. A convenience wrapper over Create for
+// callers that already have the whole thing.
+func (s *Store) Put(dek []byte, src io.Reader) (id string, size int64, sum []byte, err error) {
+	w, err := s.Create(dek)
+	if err != nil {
+		return "", 0, nil, err
+	}
+	defer w.Abort()
+
+	if _, err := io.Copy(w, src); err != nil {
+		return "", 0, nil, err
+	}
+	size, sum, err = w.Commit()
+	if err != nil {
+		return "", 0, nil, err
+	}
+	return w.ID(), size, sum, nil
 }
 
 // Open returns a reader over the decrypted blob together with its plaintext
@@ -206,16 +292,4 @@ func (s *Store) Remove(id string) error {
 		return fmt.Errorf("blob: remove %s: %w", id, err)
 	}
 	return nil
-}
-
-// countingReader records how many plaintext bytes passed through.
-type countingReader struct {
-	r io.Reader
-	n int64
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.n += int64(n)
-	return n, err
 }

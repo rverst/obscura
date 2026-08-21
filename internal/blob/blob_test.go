@@ -297,3 +297,144 @@ func TestEmptyBlob(t *testing.T) {
 		t.Fatalf("read %d bytes from an empty blob", len(got))
 	}
 }
+
+// --- streaming writer -------------------------------------------------------
+
+// Chunked writes must produce exactly what a single Put would, since a resumed
+// upload arrives in arbitrary slices.
+func TestWriterChunkedMatchesPut(t *testing.T) {
+	s, dek, _ := newStore(t)
+	want := pattern(300 << 10)
+
+	w, err := s.Create(dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Abort()
+
+	// Deliberately uneven chunks that straddle the 64KB package boundary.
+	for off := 0; off < len(want); off += 7919 {
+		end := min(off+7919, len(want))
+		if _, err := w.Write(want[off:end]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	size, sum, err := w.Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != int64(len(want)) {
+		t.Fatalf("size %d, want %d", size, len(want))
+	}
+	if h := sha256.Sum256(want); !bytes.Equal(sum, h[:]) {
+		t.Fatal("hash over chunked writes differs from the plaintext hash")
+	}
+
+	r, err := s.Open(dek, w.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	got, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("chunked content did not round-trip")
+	}
+}
+
+func TestWriterSizeTracksProgress(t *testing.T) {
+	s, dek, _ := newStore(t)
+	w, err := s.Create(dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Abort()
+
+	if w.Size() != 0 {
+		t.Fatalf("fresh writer reports %d bytes", w.Size())
+	}
+	var written int64
+	for _, chunk := range [][]byte{pattern(1000), pattern(2000), pattern(3000)} {
+		if _, err := w.Write(chunk); err != nil {
+			t.Fatal(err)
+		}
+		written += int64(len(chunk))
+		if got := w.Size(); got != written {
+			t.Fatalf("Size() = %d after %d bytes written", got, written)
+		}
+	}
+}
+
+// An aborted upload must leave nothing behind -- neither a usable blob nor a
+// .part file that quietly consumes disk forever.
+func TestWriterAbortLeavesNothing(t *testing.T) {
+	s, dek, dir := newStore(t)
+	w, err := s.Create(dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(pattern(200 << 10)); err != nil {
+		t.Fatal(err)
+	}
+	id := w.ID()
+	if err := w.Abort(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Open(dek, id); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("aborted blob is readable: %v", err)
+	}
+	var left []string
+	filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err == nil && !fi.IsDir() {
+			left = append(left, strings.TrimPrefix(p, dir))
+		}
+		return nil
+	})
+	if len(left) != 0 {
+		t.Fatalf("files left behind after Abort: %v", left)
+	}
+}
+
+// Callers defer Abort to cover error paths, so it has to be harmless once the
+// blob is committed.
+func TestAbortAfterCommitIsHarmless(t *testing.T) {
+	s, dek, _ := newStore(t)
+	w, err := s.Create(dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(pattern(4096)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := w.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Abort(); err != nil {
+		t.Fatalf("Abort after Commit returned: %v", err)
+	}
+	r, err := s.Open(dek, w.ID())
+	if err != nil {
+		t.Fatalf("Abort after Commit destroyed the blob: %v", err)
+	}
+	r.Close()
+}
+
+func TestWriteAfterCommitFails(t *testing.T) {
+	s, dek, _ := newStore(t)
+	w, err := s.Create(dek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := w.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("late")); err == nil {
+		t.Fatal("writing after Commit was accepted")
+	}
+	if _, _, err := w.Commit(); err == nil {
+		t.Fatal("committing twice was accepted")
+	}
+}
