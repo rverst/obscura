@@ -9,8 +9,8 @@ custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
 > **Status: early.** Milestones 1 (authentication, key management), 2 (upload,
-> thumbnails, metadata), 3 (gallery UI) and 4 (albums with drag-and-drop
-> ordering) are done. Video, search and the trash are still ahead.
+> thumbnails, metadata), 3 (gallery UI), 4 (albums with drag-and-drop ordering)
+> and 5 (video) are done. Search, the trash and passkeys are still ahead.
 
 ## Security model
 
@@ -79,6 +79,17 @@ photos appended to an album produce a four-character key.
 Uploading and reordering both live in an album's **edit mode**. Outside it the
 album is for looking at: nothing is draggable and there is no drop target.
 
+### Video
+
+Videos are stored exactly as uploaded and never transcoded — the Pi 5 has no
+hardware encoder at all, so re-encoding would run in software and occupy the
+machine for minutes per clip. Playback streams the original with range requests,
+so seeking works without downloading the file first.
+
+ffmpeg is used only to pull a poster frame and read the duration, and it is
+optional: without it videos still upload, are stored and play, they simply get
+no still image.
+
 ### Uploading
 
 Uploads are chunked and resumable, because a multi-gigabyte video pushed over
@@ -116,9 +127,14 @@ The step on unlock is the WebAssembly SQLite runtime being instantiated — what
 cgo-free build costs. Importing adds no memory at all, because image processing
 happens in a short-lived subprocess rather than in-process.
 
-The image is 113 MB, of which libvips and its format loaders are the bulk; the
-Go binary and the embedded frontend are 15 MB together. The frontend itself is
-37 kB, 14 kB gzipped.
+The image is 232 MB. ffmpeg accounts for 78 MB of that and libvips for most of
+the rest; the Go binary and the embedded frontend are 15 MB together, and the
+frontend itself is 45 kB, 16 kB gzipped.
+
+Almost all of the ffmpeg weight is encoder libraries this program never invokes,
+but Alpine has no decode-only build and compiling one from source would
+reintroduce a very long build. Leaving ffmpeg out is supported and saves the
+78 MB, at the cost of poster frames.
 
 ### Running it for real
 
