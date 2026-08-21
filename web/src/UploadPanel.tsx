@@ -1,0 +1,155 @@
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { addToCurrentAlbum } from "./albums";
+import { clearFinished, enqueue, tasks, uploading, type UploadTask } from "./upload";
+
+/**
+ * Scoped drop area, shown only while an album is being edited.
+ *
+ * Deliberately not a whole-window target. A window-wide drop zone competes with
+ * dragging photos around to reorder them, and it cannot express which album an
+ * upload belongs to. Here the target is explicit and so is the destination.
+ */
+export function UploadPanel({ albumID }: { albumID?: number }) {
+  const [over, setOver] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const added = useRef<number[]>([]);
+
+  const carriesFiles = (e: DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes("Files");
+
+  // Newly uploaded media is put into the album this panel belongs to, once the
+  // batch is quiet. Doing it per file would issue one request each.
+  useEffect(() => {
+    if (albumID === undefined) return;
+    if (uploading.value) return;
+    const fresh = tasks.value
+      .filter((t) => t.media && (t.status === "done" || t.status === "duplicate"))
+      .map((t) => t.media!.id)
+      .filter((id) => !added.current.includes(id));
+    if (fresh.length === 0) return;
+    added.current = [...added.current, ...fresh];
+    void addToCurrentAlbum(fresh);
+  }, [uploading.value, tasks.value, albumID]);
+
+  const accept = useCallback((files: File[]) => {
+    if (files.length > 0) enqueue(files);
+  }, []);
+
+  return (
+    <section
+      class={`upload-panel ${over ? "over" : ""}`}
+      onDragEnter={(e) => carriesFiles(e) && setOver(true)}
+      onDragOver={(e) => {
+        // Without preventDefault the browser navigates to the dropped file and
+        // the application disappears.
+        if (carriesFiles(e)) e.preventDefault();
+      }}
+      onDragLeave={(e) => {
+        // Only clear when the pointer actually left the panel, not merely
+        // crossed onto a child element.
+        if (!e.currentTarget || !(e.relatedTarget instanceof Node)) {
+          setOver(false);
+          return;
+        }
+        if (!(e.currentTarget as Node).contains(e.relatedTarget)) setOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        accept(Array.from(e.dataTransfer?.files ?? []));
+      }}
+    >
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        accept="image/*,video/*"
+        style="display:none"
+        onChange={(e) => {
+          const input = e.target as HTMLInputElement;
+          accept(Array.from(input.files ?? []));
+          // Reset, or picking the same file twice in a row does nothing.
+          input.value = "";
+        }}
+      />
+      <p>
+        Drop photos here, or{" "}
+        <button class="link" onClick={() => picker.current?.click()}>
+          choose files
+        </button>
+      </p>
+      <UploadQueue />
+    </section>
+  );
+}
+
+function UploadQueue() {
+  const list = tasks.value;
+  if (list.length === 0) return null;
+
+  const finished = list.filter((t) => t.status === "done" || t.status === "duplicate").length;
+  const failed = list.filter((t) => t.status === "error").length;
+
+  return (
+    <div class="upload-queue">
+      <header>
+        <strong>
+          {uploading.value
+            ? `Uploading ${Math.min(finished + 1, list.length)} of ${list.length}`
+            : `${list.length} ${list.length === 1 ? "file" : "files"}`}
+        </strong>
+        {failed > 0 && <span class="failed">{failed} failed</span>}
+        {!uploading.value && (
+          <button class="dismiss" onClick={clearFinished}>
+            Clear
+          </button>
+        )}
+      </header>
+      <ul>
+        {list.map((t) => (
+          <QueueRow key={t.id} task={t} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function QueueRow({ task }: { task: UploadTask }) {
+  return (
+    <li class={`task ${task.status}`}>
+      <div class="row">
+        <span class="name" title={task.name}>
+          {task.name}
+        </span>
+        <span class="state">{label(task)}</span>
+      </div>
+      {(task.status === "uploading" || task.status === "processing") && (
+        <div class="bar">
+          <div class="fill" style={{ width: `${Math.round(task.progress * 100)}%` }} />
+        </div>
+      )}
+      {task.error && <div class="err">{task.error}</div>}
+    </li>
+  );
+}
+
+function label(t: UploadTask): string {
+  switch (t.status) {
+    case "queued":
+      return "waiting";
+    case "hashing":
+      return "checking";
+    case "uploading":
+      return `${Math.round(t.progress * 100)}%`;
+    case "processing":
+      // Deriving thumbnails from a 24 MP frame is slow enough to need saying,
+      // otherwise the bar sits at 100% and looks stuck.
+      return "processing";
+    case "done":
+      return "added";
+    case "duplicate":
+      return "already here";
+    case "error":
+      return "failed";
+  }
+}

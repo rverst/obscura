@@ -121,6 +121,10 @@ function Tile({ media, style }: { media: Media; style: Record<string, string> })
           // overscan area is in the DOM but need not fetch immediately.
           loading="lazy"
           decoding="async"
+          // Images are draggable by default. Left alone, dragging a photo starts
+          // a native image drag that shows a ghost over the grid and interferes
+          // with anything else drag-related in the app.
+          draggable={false}
           width={media.width}
           height={media.height}
           class={loaded ? "loaded" : ""}

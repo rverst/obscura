@@ -6,10 +6,15 @@
 
 import { signal } from "@preact/signals";
 import { api, type Cursor, type Media, ApiError } from "./api";
+import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
 
+/** Which part of the library the main area is showing. */
+export type View = "all" | "album";
+
 export const screen = signal<Screen>("loading");
+export const view = signal<View>("all");
 export const username = signal<string>("");
 export const authError = signal<string>("");
 
@@ -40,7 +45,7 @@ export async function boot(): Promise<void> {
     const me = await api.me();
     username.value = me.username;
     screen.value = "gallery";
-    await loadMore();
+    await Promise.all([loadMore(), loadAlbums()]);
   } catch (err) {
     authError.value = messageOf(err);
     screen.value = "login";
@@ -93,10 +98,14 @@ export async function logout(): Promise<void> {
 async function enterGallery(): Promise<void> {
   resetLibrary();
   screen.value = "gallery";
-  await loadMore();
+  view.value = "all";
+  await Promise.all([loadMore(), loadAlbums()]);
 }
 
 function resetLibrary(): void {
+  albums.value = [];
+  currentAlbum.value = null;
+  albumItems.value = [];
   items.value = [];
   cursor = undefined;
   exhausted = false;
