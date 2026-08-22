@@ -8,6 +8,7 @@ import { signal } from "@preact/signals";
 import { api, type Cursor, type Media, ApiError } from "./api";
 import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
 import { closeLightbox } from "./viewer";
+import { favoritesOnly } from "./favorites";
 import { passkeysAvailable, signInWithPasskey } from "./passkey";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
@@ -155,7 +156,7 @@ export async function loadMore(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const page = await api.listMedia(cursor);
+    const page = await api.listMedia(cursor, 100, favoritesOnly.value);
     const fresh = page.items ?? [];
     items.value = [...items.value, ...fresh];
     cursor = page.next;
@@ -171,6 +172,21 @@ export async function loadMore(): Promise<void> {
   } finally {
     loading.value = false;
   }
+}
+
+/**
+ * Throws away the loaded timeline and fetches it again from the top.
+ *
+ * Needed wherever the server's answer would change underneath the cursor --
+ * restoring from the trash, or switching the favourites filter. Patching the
+ * loaded window instead would leave the cursor pointing into a sequence that
+ * no longer exists, and paging would skip or repeat.
+ */
+export async function reloadTimeline(): Promise<void> {
+  items.value = [];
+  cursor = undefined;
+  exhausted = false;
+  await loadMore();
 }
 
 export function hasMore(): boolean {

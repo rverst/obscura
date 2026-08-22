@@ -242,12 +242,28 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .lightbox dl { margin: 0; font-size: 13px; }
 .lightbox dt { color: var(--muted); margin-top: 12px; }
 .lightbox dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
-.lightbox .close {
+/* One bar rather than buttons scattered at the corners: they belong to the
+   photo on screen, and reading them as a group is what makes the trash case
+   ("Restore" / "Delete for good") legible. */
+.lightbox-bar {
   position: absolute;
   top: 12px;
   left: 12px;
+  right: 12px;
   z-index: 1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
+.lightbox-bar .info-toggle { margin-left: auto; }
+.lightbox-bar button { background: rgba(0, 0, 0, 0.55); }
+.lightbox-bar button.on { border-color: var(--accent); color: var(--accent); }
+.lightbox-bar button.danger { color: var(--danger); }
+.lightbox-bar button.danger:hover { border-color: var(--danger); }
+/* The heart is the one control that has to read at a glance while flicking
+   through a shoot, so it is bigger than the rest and filled when set. */
+.lightbox-bar .fav { font-size: 16px; line-height: 1; padding: 5px 10px; }
+.lightbox-bar .fav.on { color: var(--danger); border-color: var(--danger); }
 .lightbox .nav {
   position: absolute;
   top: 50%;
@@ -258,6 +274,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .lightbox .nav.prev { left: 12px; }
 .lightbox .nav.next { right: 316px; }
+/* With the detail panel hidden the photo fills the width, so the arrow moves
+   back to the edge with it. */
+.lightbox.no-info .nav.next { right: 12px; }
 
 @media (max-width: 720px) {
   .lightbox { flex-direction: column; }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { mediaURL } from "./api";
+import { openLightbox } from "./viewer";
 import {
   daysLeft,
   emptyTrash,
@@ -59,17 +60,28 @@ export function TrashView() {
         <div class="album-grid">
           {items.map((m) => (
             <div key={m.id} class="album-tile trashed">
-              {m.has_thumb ? (
-                <img
-                  src={mediaURL(m, "thumb")}
-                  alt={m.filename}
-                  loading="lazy"
-                  decoding="async"
-                  draggable={false}
-                />
-              ) : (
-                <span class="no-poster">{m.kind === "video" ? "video" : "no preview"}</span>
-              )}
+              {/* Openable like anywhere else. Deciding whether to restore
+                  something from a 256px thumbnail is guesswork, which is why
+                  the lightbox not working here was worth fixing. */}
+              <button
+                class="tile-open"
+                title={`Open ${m.filename}`}
+                onClick={() => openLightbox(m, items)}
+              >
+                {m.has_thumb ? (
+                  <img
+                    src={mediaURL(m, "thumb")}
+                    alt={m.filename}
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                  />
+                ) : (
+                  <span class="no-poster">
+                    {m.kind === "video" ? "video" : "no preview"}
+                  </span>
+                )}
+              </button>
               {/* The deadline comes from the server with each item, so this
                   cannot drift out of step with the retention policy. */}
               <span class="deadline">{daysLeft(m.purge_at)}d left</span>

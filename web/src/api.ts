@@ -34,6 +34,7 @@ export interface Media {
   taken_at?: number;
   duration_ms?: number;
   has_thumb: boolean;
+  favorite?: boolean;
   v?: MediaVersions;
   exif?: MediaExif;
   gps?: { lat: number; lon: number };
@@ -204,14 +205,30 @@ export const api = {
   listTrash: () => request<{ items: TrashedMedia[] }>("/api/trash"),
   emptyTrash: () => request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
 
-  listMedia: (cursor?: Cursor, limit = 100) => {
+  listMedia: (cursor?: Cursor, limit = 100, favoritesOnly = false) => {
     const q = new URLSearchParams({ limit: String(limit) });
     if (cursor) {
       q.set("before", String(cursor.before));
       q.set("before_id", String(cursor.before_id));
     }
+    // Filtered on the server so paging keeps working: sifting a page in the
+    // browser would return short pages of unpredictable length and break the
+    // "load more" trigger.
+    if (favoritesOnly) q.set("favorite", "1");
     return request<MediaPage>(`/api/media?${q}`);
   },
+
+  /**
+   * Marks or unmarks a photo.
+   *
+   * Names the end state rather than toggling. A toggle depends on what this
+   * client believes is currently true, and two taps that race would land
+   * wherever they land.
+   */
+  setFavorite: (id: number, favorite: boolean) =>
+    request<{ favorite: boolean; favorited_at?: number }>(`/api/media/${id}/favorite`, {
+      method: favorite ? "PUT" : "DELETE",
+    }),
 
   getMedia: (id: number) => request<Media>(`/api/media/${id}`),
 };
