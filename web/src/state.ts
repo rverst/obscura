@@ -13,11 +13,18 @@ import { passkeysAvailable, signInWithPasskey } from "./passkey";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
 
-/** Which part of the library the main area is showing. */
+/**
+ * Which part of the library the main area is showing.
+ *
+ * "album" covers both the top level and an open album: with no album selected
+ * it is the tile browser, and inside one it is that album's sub-albums and
+ * photos. They were two screens joined by a sidebar; they are one now.
+ */
 export type View = "all" | "album" | "trash" | "search";
 
 export const screen = signal<Screen>("loading");
-export const view = signal<View>("all");
+// Albums are the home screen; "All photos" is one tile among them.
+export const view = signal<View>("album");
 export const username = signal<string>("");
 export const authError = signal<string>("");
 
@@ -135,7 +142,7 @@ export async function logout(): Promise<void> {
 async function enterGallery(): Promise<void> {
   resetLibrary();
   screen.value = "gallery";
-  view.value = "all";
+  view.value = "album";
   await Promise.all([loadMore(), loadAlbums()]);
 }
 

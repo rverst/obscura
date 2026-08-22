@@ -49,7 +49,16 @@ body {
   flex: 0 0 auto;
 }
 
-.topbar h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: 0.02em; }
+.topbar .brand {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--text);
+}
+.topbar .brand:hover { color: var(--accent); }
 .topbar .spacer { flex: 1; }
 .topbar .count { color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -289,68 +298,153 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .body { display: flex; flex: 1 1 auto; min-height: 0; }
 .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 
-.topbar .toggle { padding: 5px 9px; font-size: 12px; line-height: 1; }
+/* --- top bar -------------------------------------------------------------- */
 
-.sidebar {
-  flex: 0 0 220px;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  overflow-y: auto;
-  padding: 10px 8px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: 0;
-  background: none;
-  border-radius: 6px;
-  padding: 7px 10px;
-  margin-bottom: 2px;
-}
-.nav-item:hover { background: var(--bg); border-color: transparent; }
-.nav-item.active { background: var(--accent); color: #fff; }
-.nav-item .label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-item .badge { flex: 0 0 auto; font-size: 12px; opacity: 0.7; font-variant-numeric: tabular-nums; }
-
-.nav-section {
-  display: flex;
-  align-items: center;
-  margin: 16px 10px 6px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-.nav-section span { flex: 1 1 auto; }
-.nav-section .tiny { padding: 1px 7px; font-size: 14px; line-height: 1.2; }
-.nav-empty { margin: 4px 10px; font-size: 13px; color: var(--muted); }
-
-.new-album input {
-  width: 100%;
-  padding: 6px 9px;
+.topbar .search {
+  flex: 0 1 260px;
+  min-width: 0;
+  padding: 6px 10px;
   font: inherit;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.topbar .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.topbar .fav-filter {
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 10px;
+}
+.topbar .fav-filter.on { color: var(--danger); border-color: var(--danger); }
+
+.user-menu { position: relative; }
+.user-button { display: flex; align-items: center; gap: 6px; }
+.user-button .caret { font-size: 10px; opacity: 0.7; }
+.user-menu .menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+.user-menu .menu button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 8px 10px;
   border-radius: 6px;
-  margin-bottom: 4px;
+}
+.user-menu .menu button:hover { background: var(--bg); }
+.user-menu .menu hr { border: 0; border-top: 1px solid var(--border); margin: 6px 4px; }
+
+/* --- breadcrumbs and album tiles ------------------------------------------ */
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 18px;
+}
+.crumbs .crumb {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  color: var(--muted);
+  border-radius: 6px;
+}
+.crumbs button.crumb:hover { color: var(--text); background: var(--bg); }
+.crumbs .crumb.current { color: var(--text); font-weight: 600; }
+.crumbs .sep { color: var(--muted); opacity: 0.6; padding: 0 2px; }
+
+.tiles {
+  display: grid;
+  /* Wide enough that a cover reads as a photograph rather than an icon, and
+     narrow enough that a phone still fits two across. */
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.tile:hover { border-color: var(--accent); }
+.tile.dragging { opacity: 0.4; }
+/* The drop target has to be unmistakable: dropping an album into the wrong
+   one is tedious to undo by hand. */
+.tile.over { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tile .tile-art {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  background: var(--bg);
+}
+.tile .tile-art.empty,
+.tile .tile-art.all,
+.tile .tile-art.plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 26px;
+}
+.tile .tile-art.all {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--surface) 100%);
+  opacity: 0.85;
+}
+.tile .tile-label { padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; }
+.tile .tile-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile .tile-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tile.new { border-style: dashed; }
+.tile.new input {
+  width: 100%;
+  padding: 9px 11px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.tile.new input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* A trashed tile opens its photo like anywhere else. */
+.album-tile .tile-open {
+  border: 0;
+  background: none;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 @media (max-width: 720px) {
-  /* Below this the sidebar would leave no room for photographs, so it floats
-     above the content instead of taking a column from it. */
-  .sidebar {
-    position: absolute;
-    top: 49px;
-    bottom: 0;
-    left: 0;
-    z-index: 5;
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.5);
-  }
+  .topbar { flex-wrap: wrap; }
+  .topbar .search { flex: 1 1 100%; order: 3; }
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
 }
 
 /* --- album view ----------------------------------------------------------- */
@@ -406,17 +500,6 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   color: #fff;
 }
 
-.sidebar .search {
-  width: 100%;
-  padding: 7px 10px;
-  margin-bottom: 10px;
-  font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.sidebar .search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 .album-tile.trashed img { opacity: 0.55; }
 .album-tile .deadline {
