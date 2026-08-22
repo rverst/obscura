@@ -65,10 +65,10 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(uploads.CloseAll)
 
 	slots := auth.NewStore(authDB)
-	// The relying party takes its origin from the request, which for httptest
-	// is http://127.0.0.1:port -- a loopback address, so browsers would treat
-	// it as a secure context and so does rpIDFor.
-	rp, err := auth.NewRelyingParty(slots, "", "obscura test")
+	// Pinned rather than taken from the request: httptest serves on
+	// http://127.0.0.1:port, and an address is not a usable RP ID. Pinning is
+	// also what a real deployment behind a proxy looks like.
+	rp, err := auth.NewRelyingParty(slots, testOrigin, "obscura test")
 	if err != nil {
 		t.Fatal(err)
 	}

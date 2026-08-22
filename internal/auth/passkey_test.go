@@ -38,7 +38,10 @@ func TestOriginMustBeSecure(t *testing.T) {
 		{"https://photos.example.com", "photos.example.com", true},
 		{"https://photos.example.com:8443", "photos.example.com", true},
 		{"http://localhost:8080", "localhost", true},
-		{"http://127.0.0.1:8080", "127.0.0.1", true},
+		// An RP ID must be a domain. This is the easy mistake for a
+		// self-hosted server, so it has to fail early and say what to use.
+		{"http://127.0.0.1:8080", "", false},
+		{"https://192.168.1.10", "", false},
 		{"http://photos.example.com", "", false},
 		{"photos.example.com", "", false},
 		{"", "", false},

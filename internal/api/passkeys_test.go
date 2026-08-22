@@ -4,22 +4,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"testing"
 
 	"github.com/rverst/obscura/internal/auth"
 	"github.com/rverst/obscura/internal/authtest"
 )
 
-// rpID is what the relying party derives from the test server's address.
-func (h *harness) rpID() string {
-	h.t.Helper()
-	u, err := url.Parse(h.srv.URL)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	return u.Hostname()
-}
+// The harness pins the relying party here, so the browser side of every
+// ceremony has to speak as if it were served from this address.
+const (
+	testOrigin = "https://photos.example.com"
+	testRPID   = "photos.example.com"
+)
 
 func challengeOf(t *testing.T, body map[string]any) []byte {
 	t.Helper()
@@ -51,7 +47,7 @@ func (h *harness) enrollPasskey(t *testing.T, a *authtest.Authenticator, label s
 		t.Fatalf("register/begin: %d %v", code, body)
 	}
 	salt := decodeSalt(t, body["prf_salt"].(string))
-	response := a.Create(h.rpID(), h.srv.URL, challengeOf(t, body))
+	response := a.Create(testRPID, testOrigin, challengeOf(t, body))
 
 	code, body = h.do("POST", "/api/passkeys/register/finish", map[string]any{
 		"ceremony":   body["ceremony"],
@@ -79,7 +75,7 @@ func (h *harness) signInWithPasskey(t *testing.T, a *authtest.Authenticator, sal
 	}
 	// The handle the authenticator would have stored at enrollment.
 	handle := h.userHandle(t)
-	response := a.Get(h.rpID(), h.srv.URL, challengeOf(t, body), handle)
+	response := a.Get(testRPID, testOrigin, challengeOf(t, body), handle)
 
 	return h.do("POST", "/api/passkeys/login/finish", map[string]any{
 		"ceremony":   body["ceremony"],
@@ -227,7 +223,7 @@ func TestAbortedEnrollmentLeavesNothing(t *testing.T) {
 		"ceremony":   ceremony,
 		"label":      "Phone",
 		"unlock_key": base64.RawURLEncoding.EncodeToString(a.UnlockKey([]byte("s"), auth.PRFInfo)),
-		"credential": json.RawMessage(a.Create(h.rpID(), h.srv.URL, []byte("challenge"))),
+		"credential": json.RawMessage(a.Create(testRPID, testOrigin, []byte("challenge"))),
 	})
 	if code == 204 {
 		t.Fatal("an aborted ceremony was completed anyway")
@@ -320,7 +316,7 @@ func TestPasskeyChallengeCannotBeReplayed(t *testing.T) {
 	payload := map[string]any{
 		"ceremony":   begin["ceremony"],
 		"unlock_key": base64.RawURLEncoding.EncodeToString(a.UnlockKey(salt, auth.PRFInfo)),
-		"credential": json.RawMessage(a.Get(h.rpID(), h.srv.URL, challengeOf(t, begin), h.userHandle(t))),
+		"credential": json.RawMessage(a.Get(testRPID, testOrigin, challengeOf(t, begin), h.userHandle(t))),
 	}
 	if code, body := h.do("POST", "/api/passkeys/login/finish", payload); code != 200 {
 		t.Fatalf("first use: %d %v", code, body)

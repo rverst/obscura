@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -363,17 +364,28 @@ func (p *RelyingParty) instanceFor(origin string) (*webauthn.WebAuthn, error) {
 }
 
 // rpIDFor reduces an origin to the RP ID, which is the bare host.
+//
+// Both rules here exist because a browser would otherwise reject the ceremony
+// itself, with a message that points at nothing the user can act on.
 func rpIDFor(origin string) (string, error) {
 	u, err := url.Parse(origin)
 	if err != nil || u.Host == "" {
 		return "", fmt.Errorf("auth: %q is not a usable origin (want scheme://host[:port])", origin)
 	}
-	if u.Scheme != "https" && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {
-		// Browsers refuse WebAuthn outside a secure context, so this would fail
-		// later in the browser with a much less obvious message.
+	host := u.Hostname()
+
+	// An RP ID has to be a domain. Reaching a self-hosted server by its address
+	// is the obvious thing to try, and http://127.0.0.1:8080 is a secure
+	// context, so this rule is easy to trip over -- http://localhost:8080 is
+	// the same server and does work.
+	if net.ParseIP(host) != nil {
+		return "", fmt.Errorf(
+			"auth: passkeys need a hostname, not an address like %q (try localhost)", host)
+	}
+	if u.Scheme != "https" && host != "localhost" {
 		return "", fmt.Errorf("auth: passkeys need https (or localhost), not %q", origin)
 	}
-	return u.Hostname(), nil
+	return host, nil
 }
 
 // Discard drops an abandoned ceremony rather than leaving it to expire -- what
