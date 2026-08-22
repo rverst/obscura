@@ -305,9 +305,13 @@ func (s *Store) ListSlots(ctx context.Context, userID int64) ([]Slot, error) {
 // The password and recovery slots are protected: if they could be deleted, a
 // user could lock themselves out permanently with a single click.
 func (s *Store) RemoveSlot(ctx context.Context, userID, slotID int64) error {
-	var kind string
+	var (
+		kind   string
+		credID []byte
+	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT kind FROM key_slots WHERE id = ? AND user_id = ?`, slotID, userID).Scan(&kind)
+		`SELECT kind, credential_id FROM key_slots WHERE id = ? AND user_id = ?`,
+		slotID, userID).Scan(&kind, &credID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("auth: slot not found")
 	}
@@ -317,11 +321,26 @@ func (s *Store) RemoveSlot(ctx context.Context, userID, slotID int64) error {
 	if kind != KindPasskey {
 		return fmt.Errorf("auth: slots of kind %q cannot be removed", kind)
 	}
-	if _, err := s.db.ExecContext(ctx,
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("auth: begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM key_slots WHERE id = ? AND user_id = ?`, slotID, userID); err != nil {
 		return fmt.Errorf("auth: delete slot: %w", err)
 	}
-	return nil
+	// The credential goes with it. Leaving it behind would keep offering the
+	// passkey at the login screen, where it would authenticate successfully and
+	// then fail to unlock -- the most confusing possible outcome.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM webauthn_credentials WHERE credential_id = ? AND user_id = ?`,
+		credID, userID); err != nil {
+		return fmt.Errorf("auth: delete credential: %w", err)
+	}
+	return tx.Commit()
 }
 
 // --- internal ---------------------------------------------------------------
