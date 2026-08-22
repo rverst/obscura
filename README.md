@@ -8,9 +8,10 @@ different set of goals: upload instead of directory scanning, drag-and-drop
 custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
-> **Status: early.** Milestones 1 to 7 are done: authentication and key
-> management, upload, the gallery, albums with drag-and-drop ordering, video,
-> search, trash, PWA support and passkeys. Deployment polish remains.
+> **Status: early.** Milestones 1 to 10 are done: authentication and key
+> management, upload, the gallery, nested albums with drag-and-drop ordering,
+> video, search, trash, favourites, PWA support, passkeys and a deployment
+> setup.
 
 ## Security model
 
@@ -69,10 +70,37 @@ Write that recovery code down and store it away from the server.
 Reach the app at `http://localhost:8080`, not `http://127.0.0.1:8080`. Both go
 to the same place, but passkeys need a hostname — see below.
 
+### Getting around
+
+Albums are the home screen, shown as tiles. There is no sidebar: search lives in
+the top bar because it applies to the whole library wherever you are, and the
+account button holds the trash, the unlock methods and the lock.
+
+**All photos** is a fixed tile at the top level — the whole library is the one
+place a given photo is certain to be.
+
+The favourites filter sits in the top bar and applies to every view, including
+search and the lightbox. A filter that some screens honour and others quietly
+ignore reads as broken rather than scoped. Press `f` in the lightbox to mark,
+`i` to show or hide the details panel.
+
 ### Albums
 
 Albums are views onto the library, not containers: deleting an album never
 deletes photographs, and removing a photo from one leaves the photo alone.
+
+Albums nest — Croatia holds 2024 and 2025 — and a breadcrumb walks back out.
+Dragging one tile onto another moves it; a move that would make an album its own
+ancestor is refused, and the refusal is shown rather than swallowed, because from
+the outside a rejected drag just looks like nothing happened. Deleting an album
+takes its sub-albums with it and says how many went.
+
+A tile shows the whole subtree's count and a cover the server works out: the one
+pinned by hand if there is one, otherwise the album's newest photo, otherwise the
+best cover among its sub-albums — so a parent that holds nothing itself still
+shows a picture. **Cover** in the lightbox pins the open photo, and offers itself
+again to hand the choice back, so the override is not a door that only shuts
+once.
 
 Each album keeps its own order. Dragging a photo writes exactly one row, whatever
 the album's size, because a position is a string that can always be subdivided
