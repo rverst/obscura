@@ -25,11 +25,12 @@ func (s *Server) handleCreateAlbum(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		ParentID    *int64 `json:"parent_id"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	a, err := library.CreateAlbum(r.Context(), s.vault(r), req.Title, req.Description)
+	a, err := library.CreateAlbum(r.Context(), s.vault(r), req.Title, req.Description, req.ParentID)
 	if err != nil {
 		s.fail(w, r, http.StatusBadRequest, err.Error(), err)
 		return
@@ -83,7 +84,9 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := library.DeleteAlbum(r.Context(), s.vault(r), id)
+	// The count includes sub-albums: deleting a parent takes its children with
+	// it, and the client needs to know more than one row changed.
+	n, err := library.DeleteAlbum(r.Context(), s.vault(r), id)
 	if errors.Is(err, library.ErrNotFound) {
 		s.fail(w, r, http.StatusNotFound, "no such album", err)
 		return
@@ -92,7 +95,57 @@ func (s *Server) handleDeleteAlbum(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, http.StatusInternalServerError, "cannot delete album", err)
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": n})
+}
+
+// handleMoveAlbum re-parents an album, or lifts it to the top level.
+func (s *Server) handleMoveAlbum(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.albumID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		ParentID *int64 `json:"parent_id"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	err := library.SetAlbumParent(r.Context(), s.vault(r), id, req.ParentID)
+	if errors.Is(err, library.ErrAlbumCycle) {
+		s.fail(w, r, http.StatusConflict, "an album cannot be moved inside itself", err)
+		return
+	}
+	if errors.Is(err, library.ErrNotFound) {
+		s.fail(w, r, http.StatusNotFound, "no such album", err)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, http.StatusBadRequest, err.Error(), err)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleAlbumPath returns the breadcrumb, root first.
+func (s *Server) handleAlbumPath(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.albumID(w, r)
+	if !ok {
+		return
+	}
+	path, err := library.AlbumPath(r.Context(), s.vault(r), id)
+	if errors.Is(err, library.ErrNotFound) {
+		s.fail(w, r, http.StatusNotFound, "no such album", err)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, http.StatusInternalServerError, "cannot read album path", err)
+		return
+	}
+	out := make([]map[string]any, 0, len(path))
+	for _, a := range path {
+		out = append(out, map[string]any{"id": a.ID, "title": a.Title})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": out})
 }
 
 // handleAlbumItems returns the album's photos in their custom order.
@@ -246,10 +299,21 @@ func albumJSON(a *library.Album) map[string]any {
 		"title":       a.Title,
 		"description": a.Description,
 		"item_count":  a.ItemCount,
+		"total_count": a.TotalCount,
 		"created_at":  a.CreatedAt.Unix(),
+	}
+	if a.ParentID != nil {
+		out["parent_id"] = *a.ParentID
 	}
 	if a.CoverMediaID != nil {
 		out["cover_media_id"] = *a.CoverMediaID
+	}
+	// The resolved cover travels as a full media record, not just an id: the
+	// tile needs the version token to build a cacheable URL, and a second
+	// round trip per album would defeat the point of resolving them in one
+	// query.
+	if a.Cover != nil {
+		out["cover"] = mediaJSON(a.Cover)
 	}
 	return out
 }

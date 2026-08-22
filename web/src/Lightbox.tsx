@@ -1,7 +1,16 @@
 import { useEffect } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
-import { trashMedia } from "./trash";
-import { closeLightbox, lightbox, lightboxScope } from "./viewer";
+import { albumItems, currentAlbum, setAlbumCover } from "./albums";
+import { setFavorite } from "./favorites";
+import { purgeMedia, restoreMedia, trashMedia } from "./trash";
+import {
+  closeLightbox,
+  infoPinned,
+  isTrashed,
+  lightbox,
+  lightboxScope,
+  toggleInfo,
+} from "./viewer";
 
 export function Lightbox({ media }: { media: Media }) {
   const all = lightboxScope.value;
@@ -11,6 +20,14 @@ export function Lightbox({ media }: { media: Media }) {
     const next = all[index + delta];
     if (next) lightbox.value = next;
   };
+
+  const trashed = isTrashed(media);
+
+  // Only offered where it means something: the photo has to be in the album
+  // whose cover would change. The server enforces the same rule.
+  const album = currentAlbum.value;
+  const inAlbum = !!album && albumItems.value.some((m) => m.id === media.id);
+  const isCover = album?.cover_media_id === media.id;
 
   // Keyboard navigation is what makes a gallery usable on a desktop; without it
   // reviewing a hundred photos means a hundred round trips to the mouse.
@@ -26,34 +43,89 @@ export function Lightbox({ media }: { media: Media }) {
         case "ArrowRight":
           step(1);
           break;
+        case "i":
+          toggleInfo();
+          break;
+        case "f":
+          // Reviewing a shoot is exactly when marking should not require
+          // aiming at a button.
+          if (!trashed) void setFavorite(media.id, !media.favorite);
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [index, all]);
+  }, [index, all, media.id, media.favorite, trashed]);
 
   return (
     <div
-      class="lightbox"
+      class={`lightbox ${infoPinned.value ? "" : "no-info"}`}
       onClick={(e) => {
         // Clicking the backdrop closes; clicking the photo or the panel must not.
         if (e.target === e.currentTarget) closeLightbox();
       }}
     >
-      <button class="close" onClick={closeLightbox}>
-        Close
-      </button>
-
-      {/* Moves the photo to the trash, where it stays recoverable for thirty
-          days. Until now the only delete in the interface removed a photo from
-          an album, which is not the same thing and was reported as confusing. */}
-      <button
-        class="trash-button"
-        title="Move to trash"
-        onClick={() => void trashMedia(media.id)}
-      >
-        Delete
-      </button>
+      <div class="lightbox-bar">
+        {/* A photo opened from the trash offers the two things that make sense
+            there. Showing "Delete" for something already deleted was the
+            reported confusion, and moving it to the trash again is not an
+            operation that exists. */}
+        {trashed ? (
+          <>
+            <button onClick={() => void restoreMedia(media.id)}>Restore</button>
+            <button class="danger" onClick={() => void purgeMedia(media.id)}>
+              Delete for good
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              class={`fav ${media.favorite ? "on" : ""}`}
+              title={media.favorite ? "Remove from favourites (f)" : "Favourite (f)"}
+              aria-pressed={media.favorite ? "true" : "false"}
+              onClick={() => void setFavorite(media.id, !media.favorite)}
+            >
+              {media.favorite ? "\u2665" : "\u2661"}
+            </button>
+            {/* The automatic cover is right most of the time; this is the way
+                to say otherwise, and to take it back. */}
+            {inAlbum && (
+              <button
+                class={`cover-button ${isCover ? "on" : ""}`}
+                title={
+                  isCover
+                    ? "The cover of this album - click to choose it automatically again"
+                    : "Use as this album's cover"
+                }
+                aria-pressed={isCover ? "true" : "false"}
+                onClick={() => void setAlbumCover(isCover ? null : media.id)}
+              >
+                Cover
+              </button>
+            )}
+            {/* Moves the photo to the trash, where it stays recoverable for
+                thirty days. */}
+            <button
+              class="trash-button"
+              title="Move to trash"
+              onClick={() => void trashMedia(media.id)}
+            >
+              Delete
+            </button>
+          </>
+        )}
+        <button
+          class={`info-toggle ${infoPinned.value ? "on" : ""}`}
+          title={infoPinned.value ? "Hide details (i)" : "Show details (i)"}
+          aria-pressed={infoPinned.value ? "true" : "false"}
+          onClick={toggleInfo}
+        >
+          Info
+        </button>
+        <button class="close" onClick={closeLightbox}>
+          Close
+        </button>
+      </div>
 
       {index > 0 && (
         <button class="nav prev" onClick={() => step(-1)} aria-label="Previous">
@@ -81,7 +153,7 @@ export function Lightbox({ media }: { media: Media }) {
         )}
       </div>
 
-      <Info media={media} />
+      {infoPinned.value && <Info media={media} />}
     </div>
   );
 }

@@ -79,8 +79,14 @@ func TestAlbumLifecycle(t *testing.T) {
 		t.Fatalf("title = %v", body["title"])
 	}
 
-	if code, _ := h.do("DELETE", "/api/albums/"+albumID, nil); code != 204 {
+	// Deleting reports how many albums went, because it takes sub-albums with
+	// it and the client should be able to say so.
+	code, body = h.do("DELETE", "/api/albums/"+albumID, nil)
+	if code != 200 {
 		t.Fatalf("delete: %d", code)
+	}
+	if body["deleted"].(float64) != 1 {
+		t.Fatalf("deleted %v albums, want 1", body["deleted"])
 	}
 	if code, _ := h.do("GET", "/api/albums/"+albumID, nil); code != 404 {
 		t.Fatalf("deleted album still readable: %d", code)

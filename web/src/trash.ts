@@ -2,7 +2,8 @@
 
 import { signal } from "@preact/signals";
 import { api, ApiError, type Media, type TrashedMedia } from "./api";
-import { items } from "./state";
+import { albumItems, loadAlbums } from "./albums";
+import { items, reloadTimeline } from "./state";
 import { forgetInViewer } from "./viewer";
 
 export const trashed = signal<TrashedMedia[]>([]);
@@ -25,18 +26,31 @@ export async function loadTrash(): Promise<void> {
 /**
  * Moves a photo to the trash.
  *
- * Removed from the timeline immediately so the deletion feels like it happened,
- * and put back if the server disagrees.
+ * A photo can be on screen in several places at once -- the timeline, an open
+ * album, a list of search results -- and it has to leave all of them. Removing
+ * it from only the timeline is why deleting from an album appeared to do
+ * nothing until the page was reloaded.
+ *
+ * The album list is refetched too, so the counts on the tiles stop including a
+ * photo that is now in the trash.
  */
 export async function trashMedia(id: number): Promise<void> {
-  const previous = items.value;
-  items.value = previous.filter((m) => m.id !== id);
+  const previous = {
+    items: items.value,
+    album: albumItems.value,
+    results: searchResults.value,
+  };
+  items.value = previous.items.filter((m) => m.id !== id);
+  albumItems.value = previous.album.filter((m) => m.id !== id);
+  searchResults.value = previous.results.filter((m) => m.id !== id);
   forgetInViewer(id);
   try {
     await api.trash(id);
-    await loadTrash();
+    await Promise.all([loadTrash(), loadAlbums()]);
   } catch (err) {
-    items.value = previous;
+    items.value = previous.items;
+    albumItems.value = previous.album;
+    searchResults.value = previous.results;
     trashError.value = messageOf(err);
   }
 }
@@ -44,8 +58,13 @@ export async function trashMedia(id: number): Promise<void> {
 export async function restoreMedia(id: number): Promise<void> {
   const previous = trashed.value;
   trashed.value = previous.filter((m) => m.id !== id);
+  forgetInViewer(id);
   try {
     await api.restore(id);
+    // The photo is back in the library and in whichever albums it was in, so
+    // the counts and the timeline both need to hear about it.
+    await loadAlbums();
+    await reloadTimeline();
   } catch (err) {
     trashed.value = previous;
     trashError.value = messageOf(err);

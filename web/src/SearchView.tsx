@@ -1,5 +1,6 @@
 import { mediaURL } from "./api";
 import { durationLabel } from "./Gallery";
+import { favoritesOnly, filterFavorites } from "./favorites";
 import { searching, searchQuery, searchResults } from "./trash";
 import { openLightbox } from "./viewer";
 
@@ -11,7 +12,9 @@ import { openLightbox } from "./viewer";
  * full-width rows would imply a continuity they do not have.
  */
 export function SearchView() {
-  const hits = searchResults.value;
+  // The favourites filter applies here too. A filter that some views honour
+  // and others ignore reads as broken rather than scoped.
+  const hits = filterFavorites(searchResults.value);
   const query = searchQuery.value.trim();
 
   return (
@@ -28,7 +31,11 @@ export function SearchView() {
       </header>
 
       {!searching.value && hits.length === 0 ? (
-        <p class="empty">Nothing matched. Filenames and camera names are searchable.</p>
+        <p class="empty">
+          {favoritesOnly.value && searchResults.value.length > 0
+            ? "Matches found, but none of them are favourites."
+            : "Nothing matched. Filenames and camera names are searchable."}
+        </p>
       ) : (
         <div class="album-grid">
           {hits.map((m) => (

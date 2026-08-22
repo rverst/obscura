@@ -103,7 +103,14 @@ type Media struct {
 	BlobThumb   string
 
 	CreatedAt time.Time
+
+	// FavoritedAt is nil when the photo is not a favourite. A timestamp rather
+	// than a flag, so "when" survives for later without another migration.
+	FavoritedAt *time.Time
 }
+
+// Favorite reports whether the photo is marked.
+func (m *Media) Favorite() bool { return m.FavoritedAt != nil }
 
 // Ingestion describes a freshly stored original awaiting processing.
 type Ingestion struct {

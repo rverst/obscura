@@ -30,7 +30,7 @@ func equalIDs(a []int64, b ...int64) bool {
 func albumWith(t *testing.T, f *fixture, n int) (*Album, []int64) {
 	t.Helper()
 	ctx := context.Background()
-	album, err := CreateAlbum(ctx, f.vault, "Crete 2019", "")
+	album, err := CreateAlbum(ctx, f.vault, "Crete 2019", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCreateAndListAlbums(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 
-	a, err := CreateAlbum(ctx, f.vault, "Crete 2019", "Beach holiday")
+	a, err := CreateAlbum(ctx, f.vault, "Crete 2019", "Beach holiday", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestCreateAndListAlbums(t *testing.T) {
 		t.Fatalf("album = %+v", a)
 	}
 
-	if _, err := CreateAlbum(ctx, f.vault, "  ", ""); err == nil {
+	if _, err := CreateAlbum(ctx, f.vault, "  ", "", nil); err == nil {
 		t.Fatal("a blank title was accepted")
 	}
 
@@ -207,7 +207,7 @@ func TestDeleteAlbumKeepsPhotos(t *testing.T) {
 	ctx := context.Background()
 	album, m := albumWith(t, f, 3)
 
-	if err := DeleteAlbum(ctx, f.vault, album.ID); err != nil {
+	if _, err := DeleteAlbum(ctx, f.vault, album.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := GetAlbum(ctx, f.vault, album.ID); !errors.Is(err, ErrNotFound) {
@@ -333,7 +333,7 @@ func TestAlbumsAreScopedToTheirUser(t *testing.T) {
 	if _, err := AlbumItems(ctx, eve, album.ID); !errors.Is(err, ErrNotFound) {
 		t.Error("another user could list the album's items")
 	}
-	if err := DeleteAlbum(ctx, eve, album.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := DeleteAlbum(ctx, eve, album.ID); !errors.Is(err, ErrNotFound) {
 		t.Error("another user could delete the album")
 	}
 	if _, err := MoveInAlbum(ctx, eve, album.ID, m[0], nil, nil); !errors.Is(err, ErrNotFound) {

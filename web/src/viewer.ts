@@ -6,7 +6,7 @@
 // instead of state.ts and albums.ts importing each other.
 
 import { signal } from "@preact/signals";
-import type { Media } from "./api";
+import type { Media, TrashedMedia } from "./api";
 
 /** The lightbox is open on this item, or closed when null. */
 export const lightbox = signal<Media | null>(null);
@@ -35,4 +35,40 @@ export function closeLightbox(): void {
 export function forgetInViewer(mediaID: number): void {
   if (lightbox.value?.id === mediaID) closeLightbox();
   lightboxScope.value = lightboxScope.value.filter((m) => m.id !== mediaID);
+}
+
+/**
+ * Whether this record came out of the trash.
+ *
+ * Decided from the item itself rather than a separate "which view am I in"
+ * signal: the deletion deadline only exists on a trashed record, so carrying
+ * the answer with the data cannot disagree with it.
+ */
+export function isTrashed(media: Media): media is TrashedMedia {
+  return typeof (media as TrashedMedia).purge_at === "number";
+}
+
+const INFO_KEY = "obscura.lightbox.info";
+
+function loadInfoPinned(): boolean {
+  try {
+    // Shown unless it was explicitly turned off: the metadata is most of why
+    // one opens a photo full-screen.
+    return localStorage.getItem(INFO_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+/** Whether the lightbox shows its detail panel. Remembered across sessions. */
+export const infoPinned = signal(loadInfoPinned());
+
+export function toggleInfo(): void {
+  infoPinned.value = !infoPinned.value;
+  try {
+    localStorage.setItem(INFO_KEY, infoPinned.value ? "1" : "0");
+  } catch {
+    // A browser that refuses storage still gets a working toggle; it just
+    // forgets between visits.
+  }
 }

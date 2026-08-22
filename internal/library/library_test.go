@@ -27,11 +27,23 @@ type fixture struct {
 	dir   string
 }
 
+// newFixture builds a library that can ingest photographs, and skips where the
+// image tools are missing.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	if _, err := exec.LookPath("vipsthumbnail"); err != nil {
 		t.Skip("vipsthumbnail not installed -- run these through `make test` (Docker)")
 	}
+	return newMetadataFixture(t)
+}
+
+// newMetadataFixture builds the same thing without demanding libvips.
+//
+// Plenty here -- the album tree, cycles, favourites -- never touches an image.
+// Skipping those tests outside Docker means the fast local loop covers less
+// than it looks like it does.
+func newMetadataFixture(t *testing.T) *fixture {
+	t.Helper()
 	dir := t.TempDir()
 
 	dek, err := crypto.NewDEK()
@@ -59,10 +71,9 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	th, err := media.NewThumbnailer()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// nil where libvips is absent; only the ingest paths need it, and those
+	// skip through newFixture.
+	th, _ := media.NewThumbnailer()
 	video, _ := media.NewVideo() // nil when ffmpeg is absent
 	return &fixture{
 		lib:   New(blobs, th, video, 2),

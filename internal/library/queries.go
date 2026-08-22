@@ -16,7 +16,7 @@ const mediaColumns = `
 	width, height, orientation, duration_ms,
 	taken_at, camera_make, camera_model, lens, iso, f_number, exposure, focal_len,
 	gps_lat, gps_lon,
-	blob_orig, blob_preview, blob_thumb, created_at`
+	blob_orig, blob_preview, blob_thumb, created_at, favorited_at`
 
 func scanMedia(sc interface{ Scan(...any) error }) (*Media, error) {
 	return scanMediaWithPrefix(sc)
@@ -46,13 +46,14 @@ func scanMediaWithPrefix(sc interface{ Scan(...any) error }, leading ...any) (*M
 		preview     sql.NullString
 		thumb       sql.NullString
 		createdAt   int64
+		favoritedAt sql.NullInt64
 	)
 	dest := append(leading,
 		&m.ID, &m.Kind, &m.Filename, &mime, &m.Bytes, &m.SHA256,
 		&width, &height, &orientation, &duration,
 		&takenAt, &cameraMake, &cameraModel, &lens, &iso, &fNumber, &exposure, &focalLen,
 		&gpsLat, &gpsLon,
-		&m.BlobOrig, &preview, &thumb, &createdAt,
+		&m.BlobOrig, &preview, &thumb, &createdAt, &favoritedAt,
 	)
 	if err := sc.Scan(dest...); err != nil {
 		return nil, err
@@ -74,6 +75,10 @@ func scanMediaWithPrefix(sc interface{ Scan(...any) error }, leading ...any) (*M
 	m.BlobThumb = thumb.String
 	m.CreatedAt = time.Unix(createdAt, 0)
 
+	if favoritedAt.Valid {
+		t := time.Unix(favoritedAt.Int64, 0)
+		m.FavoritedAt = &t
+	}
 	if takenAt.Valid {
 		t := time.Unix(takenAt.Int64, 0).UTC()
 		m.TakenAt = &t
@@ -149,6 +154,12 @@ type ListOptions struct {
 	// the time someone scrolls into a five-figure library.
 	Before   *time.Time
 	BeforeID int64
+
+	// FavoritesOnly narrows the timeline to marked photos. A filter on the
+	// query rather than something the client sifts out of a page: paging and
+	// filtering client-side would return short pages of unpredictable length
+	// and break the "load more" trigger.
+	FavoritesOnly bool
 }
 
 // List returns media newest first.
@@ -163,6 +174,9 @@ func List(ctx context.Context, v Vault, opt ListOptions) ([]*Media, error) {
 
 	args := []any{v.UserID}
 	where := `user_id = ? AND deleted_at IS NULL`
+	if opt.FavoritesOnly {
+		where += ` AND favorited_at IS NOT NULL`
+	}
 	if opt.Before != nil {
 		where += ` AND (coalesce(taken_at, created_at), id) < (?, ?)`
 		args = append(args, opt.Before.Unix(), opt.BeforeID)
