@@ -72,10 +72,7 @@ export async function login(user: string, password: string): Promise<void> {
   }
 }
 
-export async function loginWithRecovery(
-  user: string,
-  code: string,
-): Promise<void> {
+export async function loginWithRecovery(user: string, code: string): Promise<void> {
   authError.value = "";
   try {
     const res = await api.loginWithRecovery(user, code);

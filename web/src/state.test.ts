@@ -2,11 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Media } from "./api";
 import { insertMedia, items } from "./state";
 
-function media(
-  id: number,
-  takenAt: number | undefined,
-  createdAt = 5000,
-): Media {
+function media(id: number, takenAt: number | undefined, createdAt = 5000): Media {
   return {
     id,
     kind: "photo",

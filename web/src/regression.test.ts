@@ -3,12 +3,7 @@
 // same user-visible behaviour returning.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  albumItems,
-  currentAlbum,
-  removeFromAlbum,
-  type AlbumMedia,
-} from "./albums";
+import { albumItems, currentAlbum, removeFromAlbum, type AlbumMedia } from "./albums";
 import { mediaURL, type Media } from "./api";
 import { durationLabel } from "./Gallery";
 import { items } from "./state";
@@ -39,43 +34,26 @@ let adds: { albumID: number; mediaIDs: number[] }[] = [];
 let nextMediaID = 100;
 
 function fakeServer() {
-  return async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const path = String(input);
     const method = init?.method ?? "GET";
     const json = (b: unknown, status = 200) =>
-      new Response(JSON.stringify(b), {
-        status,
-        headers: { "Content-Type": "application/json" },
-      });
+      new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 
     const addMatch = /^\/api\/albums\/(\d+)\/items$/.exec(path);
     if (addMatch && method === "POST") {
       const body = JSON.parse(String(init!.body)) as { media_ids: number[] };
       adds.push({ albumID: Number(addMatch[1]), mediaIDs: body.media_ids });
-      return json({
-        added: body.media_ids.length,
-        requested: body.media_ids.length,
-      });
+      return json({ added: body.media_ids.length, requested: body.media_ids.length });
     }
     if (/^\/api\/albums\/\d+\/items$/.test(path)) return json({ items: [] });
     if (/^\/api\/albums\/\d+$/.test(path)) {
-      return json({
-        id: 1,
-        title: "A",
-        description: "",
-        item_count: 0,
-        created_at: 0,
-      });
+      return json({ id: 1, title: "A", description: "", item_count: 0, created_at: 0 });
     }
     if (path === "/api/albums") return json({ albums: [] });
     if (path === "/api/media/check") return json({ exists: false });
-    if (path === "/api/uploads" && method === "POST")
-      return json({ upload_id: "u", offset: 0 }, 201);
-    if (path.endsWith("/finish"))
-      return json({ duplicate: false, media: media(nextMediaID++) }, 201);
+    if (path === "/api/uploads" && method === "POST") return json({ upload_id: "u", offset: 0 }, 201);
+    if (path.endsWith("/finish")) return json({ duplicate: false, media: media(nextMediaID++) }, 201);
     if (method === "PATCH") return json({ offset: 10 });
     return json({});
   };
@@ -134,22 +112,10 @@ describe("uploads are filed into the album they were queued for", () => {
   });
 
   it("keeps the destination even if the open album changes mid-upload", async () => {
-    currentAlbum.value = {
-      id: 1,
-      title: "A",
-      description: "",
-      item_count: 0,
-      created_at: 0,
-    };
+    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 0, created_at: 0 };
     enqueue([file("x.jpg")], 1);
     // Navigating away while it is in flight must not redirect the upload.
-    currentAlbum.value = {
-      id: 2,
-      title: "B",
-      description: "",
-      item_count: 0,
-      created_at: 0,
-    };
+    currentAlbum.value = { id: 2, title: "B", description: "", item_count: 0, created_at: 0 };
     await settle();
     expect(adds).toEqual([{ albumID: 1, mediaIDs: [100] }]);
   });
@@ -158,13 +124,7 @@ describe("uploads are filed into the album they were queued for", () => {
 describe("lightbox browses the collection it was opened from", () => {
   // Reported: a photo removed from an album was still visible in the lightbox.
   it("closes when the photo being viewed is removed from the album", async () => {
-    currentAlbum.value = {
-      id: 1,
-      title: "A",
-      description: "",
-      item_count: 2,
-      created_at: 0,
-    };
+    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 2, created_at: 0 };
     const album = [albumMedia(1, "a0"), albumMedia(2, "a1")];
     albumItems.value = album;
     openLightbox(album[0]!, album);
@@ -176,18 +136,8 @@ describe("lightbox browses the collection it was opened from", () => {
   });
 
   it("drops a removed photo from the scope without closing on another", async () => {
-    currentAlbum.value = {
-      id: 1,
-      title: "A",
-      description: "",
-      item_count: 3,
-      created_at: 0,
-    };
-    const album = [
-      albumMedia(1, "a0"),
-      albumMedia(2, "a1"),
-      albumMedia(3, "a2"),
-    ];
+    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 3, created_at: 0 };
+    const album = [albumMedia(1, "a0"), albumMedia(2, "a1"), albumMedia(3, "a2")];
     albumItems.value = album;
     openLightbox(album[2]!, album);
 
@@ -221,12 +171,7 @@ describe("lightbox browses the collection it was opened from", () => {
 });
 
 describe("derivative URLs carry a version", () => {
-  function withVersions(
-    id: number,
-    thumb: string,
-    preview: string,
-    original: string,
-  ): Media {
+  function withVersions(id: number, thumb: string, preview: string, original: string): Media {
     return { ...media(id), v: { thumb, preview, original } };
   }
 
@@ -264,23 +209,15 @@ describe("derivative URLs carry a version", () => {
 
 describe("video tiles", () => {
   it("shows a runtime instead of a generic marker", () => {
-    expect(
-      durationLabel({ ...media(1), kind: "video", duration_ms: 95_000 }),
-    ).toBe("1:35");
-    expect(
-      durationLabel({ ...media(1), kind: "video", duration_ms: 5_000 }),
-    ).toBe("0:05");
-    expect(
-      durationLabel({ ...media(1), kind: "video", duration_ms: 3_600_000 }),
-    ).toBe("60:00");
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 95_000 })).toBe("1:35");
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 5_000 })).toBe("0:05");
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 3_600_000 })).toBe("60:00");
   });
 
   // A clip ffmpeg could not probe, or one uploaded before ffmpeg was installed.
   // It still plays, so the tile must say "video" rather than "0:00".
   it("falls back when the duration is unknown", () => {
     expect(durationLabel({ ...media(1), kind: "video" })).toBe("video");
-    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 0 })).toBe(
-      "video",
-    );
+    expect(durationLabel({ ...media(1), kind: "video", duration_ms: 0 })).toBe("video");
   });
 });

@@ -37,8 +37,7 @@ export function App() {
             <h1>obscura</h1>
             {view.value === "all" && (
               <span class="count">
-                {items.value.length}{" "}
-                {items.value.length === 1 ? "photo" : "photos"}
+                {items.value.length} {items.value.length === 1 ? "photo" : "photos"}
               </span>
             )}
             <span class="spacer" />

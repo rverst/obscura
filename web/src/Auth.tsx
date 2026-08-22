@@ -28,8 +28,8 @@ export function Setup() {
       <form onSubmit={submit}>
         <h2>Set up obscura</h2>
         <p class="hint">
-          Your password derives the key that encrypts the library. The server
-          never stores it.
+          Your password derives the key that encrypts the library. The server never
+          stores it.
         </p>
         {authError.value && <p class="error">{authError.value}</p>}
         <label>
@@ -155,9 +155,9 @@ export function RecoveryCodeNotice() {
         <p class="hint">Your recovery code:</p>
         <div class="recovery-code">{recoveryCode.value}</div>
         <p class="warn">
-          This is shown once and is stored nowhere. If you lose both your
-          password and this code, the library cannot be recovered — there is no
-          back door. Keep it somewhere other than the server.
+          This is shown once and is stored nowhere. If you lose both your password
+          and this code, the library cannot be recovered — there is no back door.
+          Keep it somewhere other than the server.
         </p>
         <button
           class="primary"

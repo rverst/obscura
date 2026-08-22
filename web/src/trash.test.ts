@@ -52,35 +52,24 @@ beforeEach(() => {
   searchResults.value = [];
   closeLightbox();
 
-  vi.stubGlobal(
-    "fetch",
-    async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      const method = init?.method ?? "GET";
-      calls.push(`${method} ${path}`);
-      const json = (b: unknown, status = 200) =>
-        new Response(JSON.stringify(b), {
-          status,
-          headers: { "Content-Type": "application/json" },
-        });
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input);
+    const method = init?.method ?? "GET";
+    calls.push(`${method} ${path}`);
+    const json = (b: unknown, status = 200) =>
+      new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 
-      if (failNext) return json({ error: "nope" }, 500);
+    if (failNext) return json({ error: "nope" }, 500);
 
-      if (path.startsWith("/api/media?q=")) {
-        const query = decodeURIComponent(
-          new URL(path, "http://x").searchParams.get("q") ?? "",
-        );
-        // Held open so the test can decide the order replies arrive in.
-        await new Promise<void>((resolve) => deferred.push({ resolve, query }));
-        return json({
-          items: [{ ...media(query.length), filename: `${query}.jpg` }],
-          query,
-        });
-      }
-      if (path === "/api/trash") return json({ items: trashed.value });
-      return new Response(null, { status: 204 });
-    },
-  );
+    if (path.startsWith("/api/media?q=")) {
+      const query = decodeURIComponent(new URL(path, "http://x").searchParams.get("q") ?? "");
+      // Held open so the test can decide the order replies arrive in.
+      await new Promise<void>((resolve) => deferred.push({ resolve, query }));
+      return json({ items: [{ ...media(query.length), filename: `${query}.jpg` }], query });
+    }
+    if (path === "/api/trash") return json({ items: trashed.value });
+    return new Response(null, { status: 204 });
+  });
 });
 
 afterEach(() => vi.unstubAllGlobals());

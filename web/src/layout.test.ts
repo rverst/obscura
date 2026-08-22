@@ -27,9 +27,7 @@ function photo(width: number, height: number): Media {
 
 /** Width consumed by a row, including the gaps between its items. */
 function rowWidth(items: { width: number }[], gap: number): number {
-  return (
-    items.reduce((sum, it) => sum + it.width, 0) + gap * (items.length - 1)
-  );
+  return items.reduce((sum, it) => sum + it.width, 0) + gap * (items.length - 1);
 }
 
 describe("layout", () => {
@@ -59,10 +57,7 @@ describe("layout", () => {
   // A single leftover photo stretched to full width is the classic justified
   // layout bug: one holiday snap suddenly two thousand pixels wide.
   it("does not stretch a short final row", () => {
-    const media = [
-      ...Array.from({ length: 8 }, () => photo(3000, 2000)),
-      photo(3000, 2000),
-    ];
+    const media = [...Array.from({ length: 8 }, () => photo(3000, 2000)), photo(3000, 2000)];
     const { rows } = layout(media, opts);
     const last = rows[rows.length - 1]!;
     expect(last.height).toBeLessThanOrEqual(opts.targetRowHeight + 0.001);
@@ -70,10 +65,7 @@ describe("layout", () => {
 
   it("caps row height so a panorama does not become a wall", () => {
     // One very wide image alone in a row would otherwise be scaled up hugely.
-    const { rows } = layout([photo(10000, 1000)], {
-      ...opts,
-      maxRowHeight: 300,
-    });
+    const { rows } = layout([photo(10000, 1000)], { ...opts, maxRowHeight: 300 });
     expect(rows[0]!.height).toBeLessThanOrEqual(300);
   });
 
@@ -91,9 +83,7 @@ describe("layout", () => {
   });
 
   it("places every photo exactly once", () => {
-    const media = Array.from({ length: 37 }, (_, i) =>
-      photo(2000 + i * 100, 1500),
-    );
+    const media = Array.from({ length: 37 }, (_, i) => photo(2000 + i * 100, 1500));
     const { rows } = layout(media, opts);
     const ids = rows.flatMap((r) => r.items.map((it) => it.media.id));
     expect(ids).toHaveLength(media.length);
@@ -101,10 +91,7 @@ describe("layout", () => {
   });
 
   it("positions items left to right with the configured gap", () => {
-    const { rows } = layout(
-      Array.from({ length: 10 }, () => photo(3000, 2000)),
-      opts,
-    );
+    const { rows } = layout(Array.from({ length: 10 }, () => photo(3000, 2000)), opts);
     for (const row of rows) {
       expect(row.items[0]!.x).toBe(0);
       for (let i = 1; i < row.items.length; i++) {
@@ -131,12 +118,10 @@ describe("layout", () => {
 
   it("handles an empty library and a zero-width container", () => {
     expect(layout([], opts)).toEqual({ rows: [], totalHeight: 0 });
-    expect(layout([photo(3000, 2000)], { ...opts, containerWidth: 0 })).toEqual(
-      {
-        rows: [],
-        totalHeight: 0,
-      },
-    );
+    expect(layout([photo(3000, 2000)], { ...opts, containerWidth: 0 })).toEqual({
+      rows: [],
+      totalHeight: 0,
+    });
   });
 });
 
@@ -186,12 +171,7 @@ describe("visibleRange", () => {
 
   it("returns nothing when scrolled past the end", () => {
     const last = rows[rows.length - 1]!;
-    const { start, end } = visibleRange(
-      rows,
-      last.y + last.height + 10_000,
-      600,
-      0,
-    );
+    const { start, end } = visibleRange(rows, last.y + last.height + 10_000, 600, 0);
     expect(end - start).toBe(0);
   });
 });

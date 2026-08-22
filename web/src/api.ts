@@ -122,8 +122,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!resp.ok) {
     const message =
-      (body as { error?: string } | null)?.error ??
-      `request failed (${resp.status})`;
+      (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`;
     throw new ApiError(resp.status, message);
   }
   return body as T;
@@ -134,13 +133,10 @@ export const api = {
   me: () => request<Me>("/api/me"),
 
   setup: (username: string, password: string) =>
-    request<{ username: string; recovery_code: string; warning: string }>(
-      "/api/setup",
-      {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      },
-    ),
+    request<{ username: string; recovery_code: string; warning: string }>("/api/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
 
   login: (username: string, password: string) =>
     request<{ username: string }>("/api/login", {
@@ -202,15 +198,11 @@ export const api = {
     return request<MediaPage>(`/api/media?${q}`);
   },
 
-  trash: (id: number) =>
-    request<void>(`/api/media/${id}`, { method: "DELETE" }),
-  restore: (id: number) =>
-    request<void>(`/api/media/${id}/restore`, { method: "POST" }),
-  purge: (id: number) =>
-    request<void>(`/api/media/${id}/purge`, { method: "DELETE" }),
+  trash: (id: number) => request<void>(`/api/media/${id}`, { method: "DELETE" }),
+  restore: (id: number) => request<void>(`/api/media/${id}/restore`, { method: "POST" }),
+  purge: (id: number) => request<void>(`/api/media/${id}/purge`, { method: "DELETE" }),
   listTrash: () => request<{ items: TrashedMedia[] }>("/api/trash"),
-  emptyTrash: () =>
-    request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
+  emptyTrash: () => request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
 
   listMedia: (cursor?: Cursor, limit = 100) => {
     const q = new URLSearchParams({ limit: String(limit) });

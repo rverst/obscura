@@ -28,9 +28,7 @@ export function SearchView() {
       </header>
 
       {!searching.value && hits.length === 0 ? (
-        <p class="empty">
-          Nothing matched. Filenames and camera names are searchable.
-        </p>
+        <p class="empty">Nothing matched. Filenames and camera names are searchable.</p>
       ) : (
         <div class="album-grid">
           {hits.map((m) => (
@@ -49,13 +47,9 @@ export function SearchView() {
                   draggable={false}
                 />
               ) : (
-                <span class="no-poster">
-                  {m.kind === "video" ? "video" : "no preview"}
-                </span>
+                <span class="no-poster">{m.kind === "video" ? "video" : "no preview"}</span>
               )}
-              {m.kind === "video" && (
-                <span class="video-badge">{durationLabel(m)}</span>
-              )}
+              {m.kind === "video" && <span class="video-badge">{durationLabel(m)}</span>}
             </button>
           ))}
         </div>

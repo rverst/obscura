@@ -37,10 +37,7 @@ class FakeServer {
   duplicate = false;
   existing: Media | null = null;
 
-  handler = async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  handler = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const path = String(input);
     const method = init?.method ?? "GET";
 
@@ -200,14 +197,10 @@ describe("upload", () => {
   it("gives up after repeated failures and reports the file as failed", async () => {
     // Every PATCH fails, however often it is retried.
     const original = server.handler;
-    vi.stubGlobal(
-      "fetch",
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        if ((init?.method ?? "GET") === "PATCH")
-          throw new TypeError("network error");
-        return original(input, init);
-      },
-    );
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "PATCH") throw new TypeError("network error");
+      return original(input, init);
+    });
 
     enqueue([fileOf("doomed.jpg", 1024)]);
     await settle();
@@ -217,11 +210,7 @@ describe("upload", () => {
   });
 
   it("processes a batch sequentially so a Pi is not flooded", async () => {
-    enqueue([
-      fileOf("a.jpg", 1024),
-      fileOf("b.jpg", 1024),
-      fileOf("c.jpg", 1024),
-    ]);
+    enqueue([fileOf("a.jpg", 1024), fileOf("b.jpg", 1024), fileOf("c.jpg", 1024)]);
     await settle();
 
     expect(tasks.value).toHaveLength(3);
@@ -232,14 +221,7 @@ describe("upload", () => {
     const seq = server.calls
       .filter((c) => c.path === "/api/uploads" || c.path.endsWith("/finish"))
       .map((c) => (c.path.endsWith("/finish") ? "finish" : "create"));
-    expect(seq).toEqual([
-      "create",
-      "finish",
-      "create",
-      "finish",
-      "create",
-      "finish",
-    ]);
+    expect(seq).toEqual(["create", "finish", "create", "finish", "create", "finish"]);
   });
 
   it("adds the finished item to the gallery", async () => {

@@ -200,11 +200,7 @@ async function createUpload(file: File): Promise<string> {
 }
 
 /** Sends one chunk and returns the server's new offset. */
-async function sendChunk(
-  uploadID: string,
-  blob: Blob,
-  offset: number,
-): Promise<number> {
+async function sendChunk(uploadID: string, blob: Blob, offset: number): Promise<number> {
   const resp = await fetch(`/api/uploads/${uploadID}`, {
     method: "PATCH",
     headers: { "Upload-Offset": String(offset) },
@@ -217,9 +213,7 @@ async function sendChunk(
 
 async function serverOffset(uploadID: string): Promise<number | null> {
   try {
-    const resp = await fetch(`/api/uploads/${uploadID}`, {
-      credentials: "same-origin",
-    });
+    const resp = await fetch(`/api/uploads/${uploadID}`, { credentials: "same-origin" });
     const body = await readJSON(resp);
     return (body as { offset: number }).offset;
   } catch {
@@ -259,8 +253,7 @@ async function readJSON(resp: Response): Promise<unknown> {
   }
   if (!resp.ok) {
     const message =
-      (body as { error?: string } | null)?.error ??
-      `request failed (${resp.status})`;
+      (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`;
     throw new ApiError(resp.status, message);
   }
   return body;
@@ -271,9 +264,7 @@ async function readJSON(resp: Response): Promise<unknown> {
 async function sha256Hex(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", buf);
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function delay(ms: number): Promise<void> {

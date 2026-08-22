@@ -83,11 +83,7 @@ export function Sidebar() {
 
       <div class="nav-section">
         <span>Albums</span>
-        <button
-          class="tiny"
-          title="New album"
-          onClick={() => setCreating(true)}
-        >
+        <button class="tiny" title="New album" onClick={() => setCreating(true)}>
           +
         </button>
       </div>
@@ -128,9 +124,7 @@ export function Sidebar() {
         <button
           key={a.id}
           class={`nav-item album ${
-            view.value === "album" && currentAlbum.value?.id === a.id
-              ? "active"
-              : ""
+            view.value === "album" && currentAlbum.value?.id === a.id ? "active" : ""
           }`}
           onClick={() => {
             view.value = "album";
