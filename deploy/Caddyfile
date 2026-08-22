@@ -1,0 +1,55 @@
+# TLS in front of obscura.
+#
+# obscura speaks plain http and never terminates TLS itself. Without something
+# like this in front, the password and every photo travel the network in the
+# clear -- and passkeys do not work at all, because browsers refuse WebAuthn
+# outside a secure context.
+#
+# Caddy obtains and renews a certificate on its own; the only thing it needs is
+# a domain that resolves to this machine and ports 80 and 443 reachable.
+
+{$OBSCURA_DOMAIN} {
+	# Caddy sets X-Forwarded-Proto, X-Forwarded-Host and X-Forwarded-For for
+	# us. obscura reads the first two to reconstruct the address the browser
+	# used, which is what the passkey relying party is derived from when
+	# -origin is not pinned. Pin it anyway -- see the compose file.
+	reverse_proxy obscura:8080 {
+		# Uploads arrive in 8 MB chunks and a large video can take a long
+		# time over wifi. The default would cut a slow upload short.
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+	}
+
+	# Compression is listed explicitly rather than left to the default, because
+	# on a Pi the difference matters: photos, videos and every stored
+	# derivative are already compressed, and running them through gzip again
+	# spends CPU to make them very slightly larger. Only the shell and the JSON
+	# API benefit.
+	encode {
+		zstd
+		gzip 5
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/manifest+json*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# The library is behind a password that unwraps an encryption key. A single
+	# downgraded request is enough to hand it over, so say so once and let the
+	# browser remember.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Keep the log; a self-hosted server on the open internet gets scanned, and
+	# failed logins are the thing worth noticing.
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
