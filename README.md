@@ -201,16 +201,101 @@ reintroduce a very long build. Leaving ffmpeg out is supported and saves the
 
 ### Running it for real
 
-`docker-compose.yml` binds to loopback and passes `-dev`, which drops the
-cookie's `Secure` flag so the app is reachable over plain http on localhost.
+`docker-compose.yml` in the repository root is for development: it binds to
+loopback and passes `-dev`, which drops the cookie's `Secure` flag so the app
+works over plain http on localhost. Do not expose it.
 
-For an actual deployment, put a TLS reverse proxy (Caddy, nginx) in front and
-drop `-dev`. obscura speaks plain http and does not terminate TLS itself —
-without a proxy the password travels over the network in the clear.
+`deploy/` holds the real thing — obscura behind Caddy, which gets and renews
+the certificate on its own:
 
-Pass `-origin https://your.host` as well, so the passkey relying party is pinned
-instead of taken from each request, and make sure the proxy sets
-`X-Forwarded-Proto` and `X-Forwarded-Host`.
+```sh
+cd deploy
+cp env.example .env          # then set OBSCURA_DOMAIN
+docker compose -f docker-compose.prod.yml up -d
+```
+
+The domain has to resolve to the machine before you start, because Caddy proves
+control of it to obtain the certificate.
+
+Three things in there are load-bearing rather than decorative:
+
+- **obscura publishes no ports.** The only way in is through Caddy, so there is
+  no plain-http door left open on the host.
+- **`-origin` is pinned** to the domain. Without it the passkey relying party
+  comes from the request, and checking an origin against a value taken from
+  that same request proves nothing.
+- **Compression is an explicit list.** Photos, videos and every derivative are
+  already compressed; running them through gzip again spends Pi CPU to make
+  them slightly larger.
+
+If you would rather use nginx, the requirements are: terminate TLS, forward to
+port 8080, set `X-Forwarded-Proto` and `X-Forwarded-Host`, and do not impose a
+request body limit or a short upload timeout — a video arrives in 8 MB chunks
+and can take a while.
+
+### Backups
+
+Encryption is not a backup. A disk that dies takes an encrypted library with it
+just as thoroughly as a plaintext one.
+
+```sh
+make backup                              # development stack, into ./backups
+deploy/backup.sh -f docker-compose.prod.yml /mnt/backup     # production
+```
+
+The script stops the container before copying, and that is the whole point.
+obscura runs its databases in WAL mode, so recent commits live in `auth.db-wal`
+and `photos.db-wal` until they are checkpointed. **A copy of `auth.db` taken
+from a running server opens cleanly, looks plausible, and is missing whatever
+happened most recently.** A clean shutdown checkpoints the log and leaves one
+self-contained file; the downtime is a few seconds.
+
+Two things the archive does not do for you:
+
+1. **It is not encrypted as it stands.** The photos and the metadata database
+   inside it are, but `auth.db` is deliberately plaintext — it has to be
+   readable before any key exists. Encrypt each snapshot before it leaves the
+   machine, with a key unrelated to your obscura password:
+
+   ```sh
+   age -r age1... obscura-20260822T083143Z.tar > obscura-20260822T083143Z.tar.age
+   ```
+
+   That also closes a smaller leak. obscura encrypts the metadata database
+   deterministically, so someone holding several *plain* snapshots can see which
+   4 KB pages changed between them — not their contents, and the photos
+   themselves are unaffected. Encrypting each snapshot separately makes them
+   indistinguishable.
+
+2. **Keep the recovery code somewhere else entirely.** Beside the backup it is
+   not a recovery code, it is the key taped to the door.
+
+Restoring is extracting the archive into an empty volume and starting the
+server; it wants no special handling. Do it once, on purpose, before you need
+to — a backup nobody has ever restored is a guess.
+
+### Known issues
+
+**The browser, not obscura, chooses which passkey provider handles enrollment.**
+On macOS and Windows the system provider (iCloud Keychain, Windows Hello) tends
+to grab the prompt before a browser extension such as Bitwarden or 1Password
+gets a look in. There is no way for a website to ask for a particular provider,
+so this cannot be fixed here. What works is telling the browser: Chrome's
+passkey settings and the extension's own settings decide who is offered, and
+the system dialog usually has a "use another device / another provider" escape
+hatch.
+
+Worth telling the two failure modes apart: if the wrong provider takes the
+prompt you get a passkey saved in the wrong place. If the provider that answers
+cannot do the PRF extension, obscura refuses the enrollment outright and says
+so — nothing is saved, and your password is untouched.
+
+**32-bit is not supported.** The build is 64-bit only; see the note in the
+Makefile. A Pi 4, 5 or Zero 2 W running a 64-bit OS is fine, an original Pi Zero
+is not.
+
+**No licence yet.** The repository has no `LICENSE` file, which matters before
+publishing an image anyone else might pull.
 
 ### Fast inner loop
 

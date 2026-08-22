@@ -91,6 +91,12 @@ export function UnlockMethods() {
           cannot, you will be told during setup and nothing is saved — your
           password keeps working either way.
         </p>
+        <p class="hint">
+          Your browser decides which passkey provider answers, and a website
+          cannot ask for a particular one. If the system prompt appears where
+          you expected a password manager, cancel it and look for “another
+          device” or “another provider” in that dialog.
+        </p>
 
         <button onClick={closeSecurity}>Close</button>
       </div>

@@ -1,0 +1,64 @@
+# Production stack: obscura behind Caddy, which handles TLS.
+#
+#   cp .env.example .env    # then set OBSCURA_DOMAIN
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Run this from the deploy/ directory. The development compose file in the
+# repository root is a different thing entirely: it binds to loopback, passes
+# -dev and is not safe to expose.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3. Harmless if the network blocks it -- browsers fall back.
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Losing this volume means re-issuing them, and
+      # Let's Encrypt counts that against a rate limit.
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      OBSCURA_DOMAIN: ${OBSCURA_DOMAIN:?set OBSCURA_DOMAIN in .env}
+    depends_on:
+      - obscura
+
+  obscura:
+    image: ${OBSCURA_IMAGE:-ghcr.io/rverst/obscura:latest}
+    restart: unless-stopped
+    # Deliberately no ports. The only way in is through Caddy, so there is no
+    # plain-http door left open on the host.
+    volumes:
+      - obscura-data:/data
+    tmpfs:
+      # libvips falls back to a memory-mapped temp file for images too large to
+      # hold in RAM. Backing /tmp with tmpfs keeps that copy out of persistent
+      # storage -- otherwise plaintext could survive on disk behind the
+      # encryption.
+      - /tmp:size=512m,mode=1777
+    command:
+      - -addr=0.0.0.0:8080
+      - -data=/data
+      # Pinned rather than derived from each request. Without it the passkey
+      # relying party comes from the Host header, and verifying an origin
+      # against a value taken from the same request proves nothing on its own.
+      - -origin=https://${OBSCURA_DOMAIN}
+      - -name=obscura
+      # Two at a time is about right for a 4-core Pi: each libvips subprocess
+      # wants roughly 30 MB, and unbounded parallelism is what kills a 2 GB
+      # machine during a bulk import. Lower it to 1 on a Pi Zero 2 W.
+      - -workers=2
+    # No memory limit by default. One is easy to add and easy to get wrong: a
+    # limit that fits normal use will OOM-kill the process mid-import, losing
+    # the upload and closing the vault. Measure first, then set it well above
+    # the peak you saw.
+    # mem_limit: 512m
+
+volumes:
+  obscura-data:
+  caddy-data:
+  caddy-config:

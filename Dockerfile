@@ -65,6 +65,15 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # the runtime needs a package manager rather than an empty filesystem. busybox
 # wget also serves as a healthcheck without baking one into the binary.
 FROM alpine:3.22 AS runtime
+ARG VERSION=dev
+
+# Provenance for a published image. Without at least image.source, a pulled
+# image is an anonymous binary: nothing in it says which commit it came from or
+# where to look when it misbehaves.
+LABEL org.opencontainers.image.title="obscura" \
+      org.opencontainers.image.description="Self-hosted photo and video viewer, encrypted at rest" \
+      org.opencontainers.image.source="https://github.com/rverst/obscura" \
+      org.opencontainers.image.version="${VERSION}"
 
 # vips-tools provides vipsthumbnail, which obscura runs as a subprocess rather
 # than linking through cgo -- that is what keeps the build cgo-free and the
