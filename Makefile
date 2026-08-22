@@ -34,7 +34,7 @@ build-multi: ## Build a multi-arch image (needs a buildx builder)
 .PHONY: up
 up: ## Start the stack via docker compose
 	docker compose up --build -d
-	@echo "obscura is on http://127.0.0.1:8080"
+	@echo "obscura is on http://localhost:8080"
 
 .PHONY: down
 down: ## Stop the stack (the data volume is kept)

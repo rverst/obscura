@@ -8,9 +8,9 @@ different set of goals: upload instead of directory scanning, drag-and-drop
 custom ordering inside albums, and encryption that covers the metadata as well
 as the files.
 
-> **Status: early.** Milestones 1 to 6 are done: authentication and key
+> **Status: early.** Milestones 1 to 7 are done: authentication and key
 > management, upload, the gallery, albums with drag-and-drop ordering, video,
-> and search, trash and PWA support. Passkeys and deployment polish remain.
+> search, trash, PWA support and passkeys. Deployment polish remains.
 
 ## Security model
 
@@ -50,7 +50,7 @@ make test        # gofmt, vet and the test suite, inside Docker
 make build       # runtime image for the local platform
 make build-pi    # cross-build for a Raspberry Pi (linux/arm64)
 
-make up          # start the stack, http://127.0.0.1:8080
+make up          # start the stack, http://localhost:8080
 make logs
 make down
 ```
@@ -59,12 +59,15 @@ First run needs a one-time setup call, which returns the recovery code exactly
 once:
 
 ```sh
-curl -sX POST http://127.0.0.1:8080/api/setup \
+curl -sX POST http://localhost:8080/api/setup \
   -H 'Content-Type: application/json' \
   -d '{"username":"you","password":"a-good-password"}'
 ```
 
 Write that recovery code down and store it away from the server.
+
+Reach the app at `http://localhost:8080`, not `http://127.0.0.1:8080`. Both go
+to the same place, but passkeys need a hostname — see below.
 
 ### Albums
 
@@ -110,6 +113,39 @@ Filenames and camera names, as an ordinary full-text query inside the encrypted
 database. That is what encrypting the whole file rather than individual columns
 bought: no blind indexes, and no downloading the library to filter it in the
 browser.
+
+### Passkeys
+
+A passkey here is not a second factor. It is a third way to unwrap the key that
+decrypts the library, alongside the password and the recovery code, and it works
+through the WebAuthn PRF extension: an ordinary passkey signature differs on
+every use and is useless as key material, while PRF returns the same 32 bytes
+for the same salt every time. The browser runs that through HKDF and the server
+wraps the data key with the result — one more key slot, no photo re-encrypted.
+
+Add one under **Unlock methods**. Nothing is stored until the device has
+actually produced a key: PRF support is still patchy across browsers, platforms
+and authenticators, and a passkey that signs in but cannot decrypt would be
+worse than none at all. A device that cannot do it says so, and nothing is
+saved. The password always keeps working.
+
+Two things have to hold before the button appears:
+
+- **A hostname, not an address.** WebAuthn requires the relying party ID to be a
+  domain, so `http://localhost:8080` works and `http://127.0.0.1:8080` does not.
+  Same server; on the second one the app reports passkeys as unavailable.
+- **https, or localhost.** Browsers refuse WebAuthn outside a secure context.
+
+For a real deployment, pass `-origin https://photos.example.com`. Without it the
+relying party takes its address from each request, which keeps the app working
+under whatever hostname it is reached by — but then verifying the origin against
+a value from that same request proves nothing on its own. What still holds is
+the browser's own rule that the relying party ID must match the real origin, so
+a forged `Host` header breaks the ceremony rather than redirecting it. Pinning
+restores the full check.
+
+Removing a passkey deletes its slot and its credential together. The password
+and recovery slots cannot be removed at all — they are the way back in.
 
 ### Installing on a phone
 
@@ -171,6 +207,10 @@ cookie's `Secure` flag so the app is reachable over plain http on localhost.
 For an actual deployment, put a TLS reverse proxy (Caddy, nginx) in front and
 drop `-dev`. obscura speaks plain http and does not terminate TLS itself —
 without a proxy the password travels over the network in the clear.
+
+Pass `-origin https://your.host` as well, so the passkey relying party is pinned
+instead of taken from each request, and make sure the proxy sets
+`X-Forwarded-Proto` and `X-Forwarded-Host`.
 
 ### Fast inner loop
 

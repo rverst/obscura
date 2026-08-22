@@ -8,6 +8,10 @@ services:
       # Bound to loopback on purpose. obscura speaks plain http; TLS belongs in
       # a reverse proxy in front of it. Exposing this straight to the network
       # would send the password over the wire in the clear.
+      #
+      # Reach it as http://localhost:8080. The address form works for
+      # everything except passkeys, which need a hostname as the relying party
+      # ID and are reported as unavailable there.
       - "127.0.0.1:8080:8080"
     volumes:
       - obscura-data:/data
