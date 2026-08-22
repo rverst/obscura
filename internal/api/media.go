@@ -68,6 +68,9 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 		}
 		opt.Limit = n
 	}
+	// Favourites are a filter on the timeline rather than a separate listing,
+	// so paging, the cursor and the grid all keep working unchanged.
+	opt.FavoritesOnly = q.Get("favorite") == "1"
 	// Keyset cursor: both halves or neither, otherwise paging would silently
 	// restart from the top and loop forever.
 	before, beforeID := q.Get("before"), q.Get("before_id")
@@ -256,6 +259,7 @@ func mediaJSON(m *library.Media) map[string]any {
 		"height":     m.Height,
 		"created_at": m.CreatedAt.Unix(),
 		"has_thumb":  m.BlobThumb != "",
+		"favorite":   m.Favorite(),
 		// Cache-busting tokens, one per derivative. Opaque to the client: it
 		// only needs them to build a URL that changes when the content does.
 		// The values are random blob ids and reveal nothing about the picture.
