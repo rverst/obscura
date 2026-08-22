@@ -1,5 +1,6 @@
 import { useEffect } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
+import { albumItems, currentAlbum, setAlbumCover } from "./albums";
 import { setFavorite } from "./favorites";
 import { purgeMedia, restoreMedia, trashMedia } from "./trash";
 import {
@@ -21,6 +22,12 @@ export function Lightbox({ media }: { media: Media }) {
   };
 
   const trashed = isTrashed(media);
+
+  // Only offered where it means something: the photo has to be in the album
+  // whose cover would change. The server enforces the same rule.
+  const album = currentAlbum.value;
+  const inAlbum = !!album && albumItems.value.some((m) => m.id === media.id);
+  const isCover = album?.cover_media_id === media.id;
 
   // Keyboard navigation is what makes a gallery usable on a desktop; without it
   // reviewing a hundred photos means a hundred round trips to the mouse.
@@ -80,6 +87,22 @@ export function Lightbox({ media }: { media: Media }) {
             >
               {media.favorite ? "\u2665" : "\u2661"}
             </button>
+            {/* The automatic cover is right most of the time; this is the way
+                to say otherwise, and to take it back. */}
+            {inAlbum && (
+              <button
+                class={`cover-button ${isCover ? "on" : ""}`}
+                title={
+                  isCover
+                    ? "The cover of this album - click to choose it automatically again"
+                    : "Use as this album's cover"
+                }
+                aria-pressed={isCover ? "true" : "false"}
+                onClick={() => void setAlbumCover(isCover ? null : media.id)}
+              >
+                Cover
+              </button>
+            )}
             {/* Moves the photo to the trash, where it stays recoverable for
                 thirty days. */}
             <button

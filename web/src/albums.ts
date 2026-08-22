@@ -80,6 +80,13 @@ export const albumApi = {
       body: JSON.stringify({ parent_id: parentID }),
     }),
 
+  /** Pins a cover, or hands the choice back to the server with null. */
+  setCover: (id: number, mediaID: number | null) =>
+    request<void>(`/api/albums/${id}/cover`, {
+      method: "PUT",
+      body: JSON.stringify({ media_id: mediaID }),
+    }),
+
   items: (id: number) => request<{ items: AlbumMedia[] }>(`/api/albums/${id}/items`),
   add: (id: number, mediaIDs: number[]) =>
     request<{ added: number; requested: number }>(`/api/albums/${id}/items`, {
@@ -207,6 +214,27 @@ export async function deleteAlbum(id: number): Promise<void> {
     if (open && (open.id === id || albumPath.value.some((a) => a.id === id))) {
       openLibraryRoot();
     }
+    await loadAlbums();
+  } catch (err) {
+    albumError.value = messageOf(err);
+  }
+}
+
+/**
+ * Pins the open album's cover to one photo, or clears it back to automatic.
+ *
+ * Albums pick a cover by themselves -- the newest photo, or the best one from a
+ * sub-album -- which is right until it is not. Clearing it is the same call with
+ * null, so the automatic choice is never a door that only shuts once.
+ */
+export async function setAlbumCover(mediaID: number | null): Promise<void> {
+  const album = currentAlbum.value;
+  if (!album) return;
+  albumError.value = "";
+  try {
+    await albumApi.setCover(album.id, mediaID);
+    currentAlbum.value = { ...album, cover_media_id: mediaID ?? undefined };
+    // The tiles carry the cover, so the list has to hear about it too.
     await loadAlbums();
   } catch (err) {
     albumError.value = messageOf(err);

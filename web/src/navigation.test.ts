@@ -9,6 +9,7 @@ import {
   deleteAlbum,
   moveAlbum,
   openLibraryRoot,
+  setAlbumCover,
   type Album,
 } from "./albums";
 import { favoritesOnly, filterFavorites } from "./favorites";
@@ -158,5 +159,39 @@ describe("the favourites filter", () => {
     favoritesOnly.value = true;
     const list = [media(1, true), media(2), media(3, true)];
     expect(filterFavorites(list).map((m) => m.id)).toEqual([1, 3]);
+  });
+});
+
+describe("the album cover", () => {
+  beforeEach(() => {
+    currentAlbum.value = album(1, "Croatia");
+  });
+
+  it("can be pinned to one photo", async () => {
+    await setAlbumCover(7);
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("/api/albums/1/cover");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body)).toEqual({ media_id: 7 });
+    expect(currentAlbum.value?.cover_media_id).toBe(7);
+  });
+
+  // Overriding the automatic choice has to be reversible, or the first
+  // click is permanent.
+  it("goes back to automatic with null", async () => {
+    currentAlbum.value = { ...album(1, "Croatia"), cover_media_id: 7 };
+
+    await setAlbumCover(null);
+
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ media_id: null });
+    expect(currentAlbum.value?.cover_media_id).toBeUndefined();
+  });
+
+  it("refreshes the tiles, which are what show the cover", async () => {
+    await setAlbumCover(7);
+
+    const paths = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(paths).toContain("/api/albums");
   });
 });
