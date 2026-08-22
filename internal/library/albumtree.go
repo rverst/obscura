@@ -25,14 +25,14 @@ var ErrAlbumCycle = errors.New("library: an album cannot contain itself")
 // Croatia into its own 2025 sub-album would detach both from the tree: they
 // would still exist, still hold photos, and never appear anywhere again.
 func SetAlbumParent(ctx context.Context, v Vault, albumID int64, parentID *int64) error {
-	if _, err := GetAlbum(ctx, v, albumID); err != nil {
+	if _, err := albumRow(ctx, v, albumID); err != nil {
 		return err
 	}
 	if parentID != nil {
 		if *parentID == albumID {
 			return ErrAlbumCycle
 		}
-		if _, err := GetAlbum(ctx, v, *parentID); err != nil {
+		if _, err := albumRow(ctx, v, *parentID); err != nil {
 			return fmt.Errorf("library: no such parent album: %w", err)
 		}
 		// Walk up from the proposed parent. Meeting albumID on the way means
@@ -81,7 +81,7 @@ func AlbumPath(ctx context.Context, v Vault, id int64) ([]*Album, error) {
 	var path []*Album
 	cur := id
 	for depth := 0; depth < maxAlbumDepth; depth++ {
-		a, err := GetAlbum(ctx, v, cur)
+		a, err := albumRow(ctx, v, cur)
 		if err != nil {
 			return nil, err
 		}

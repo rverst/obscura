@@ -270,3 +270,51 @@ func titles(albums []*Album) []string {
 	}
 	return out
 }
+
+// An album described one way as a tile and another way when opened is the same
+// class of bug as a stale count: the number on screen depends on which request
+// happened to fetch it. GetAlbum used to read a single row, so a parent whose
+// photos all live in sub-albums came back with no cover and a total of zero.
+func TestOneAlbumReadsTheSameThroughBothEndpoints(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+
+	croatia := mustAlbum(t, f, "Croatia", nil)
+	y2024 := mustAlbum(t, f, "2024", &croatia.ID)
+
+	photo, err := f.upload(t, "beach.jpg", testJPEG(t, 400, 300))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AddToAlbum(ctx, f.vault, y2024.ID, []int64{photo.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	listed, err := ListAlbums(ctx, f.vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromList := albumByID(listed, croatia.ID)
+
+	fetched, err := GetAlbum(ctx, f.vault, croatia.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fetched.TotalCount != fromList.TotalCount {
+		t.Fatalf("TotalCount = %d via GetAlbum, %d via ListAlbums",
+			fetched.TotalCount, fromList.TotalCount)
+	}
+	if fetched.Cover == nil {
+		t.Fatal("GetAlbum returned no cover, ListAlbums resolved one")
+	}
+	if fetched.Cover.ID != fromList.Cover.ID {
+		t.Fatalf("cover = %d via GetAlbum, %d via ListAlbums",
+			fetched.Cover.ID, fromList.Cover.ID)
+	}
+	// And the inherited answer is the real one, not the parent's own empty row.
+	if fetched.TotalCount != 1 || fetched.ItemCount != 0 {
+		t.Fatalf("ItemCount = %d, TotalCount = %d; want 0 and 1",
+			fetched.ItemCount, fetched.TotalCount)
+	}
+}

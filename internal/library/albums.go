@@ -47,7 +47,7 @@ func CreateAlbum(ctx context.Context, v Vault, title, description string, parent
 	}
 	var parent any
 	if parentID != nil {
-		if _, err := GetAlbum(ctx, v, *parentID); err != nil {
+		if _, err := albumRow(ctx, v, *parentID); err != nil {
 			return nil, fmt.Errorf("library: no such parent album: %w", err)
 		}
 		parent = *parentID
@@ -122,8 +122,32 @@ func ListAlbums(ctx context.Context, v Vault) ([]*Album, error) {
 	return out, nil
 }
 
-// GetAlbum returns one album.
+// GetAlbum returns one album, resolved the same way the list resolves it.
+//
+// It goes through the whole set rather than reading a single row, because a
+// cover and a subtree total are answers about an album's descendants, not about
+// its own row. Reading the row alone gave an album one cover as a tile and no
+// cover when opened -- the same photo described two ways depending on which
+// endpoint asked.
 func GetAlbum(ctx context.Context, v Vault, id int64) (*Album, error) {
+	all, err := ListAlbums(ctx, v)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range all {
+		if a.ID == id {
+			return a, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+// albumRow reads one album without resolving its cover or subtree total.
+//
+// This is the cheap existence check the mutations want, and the one the
+// ancestor walk in AlbumPath needs: resolving the whole set once per level
+// would turn a sixteen-deep path into sixteen full passes.
+func albumRow(ctx context.Context, v Vault, id int64) (*Album, error) {
 	a := &Album{}
 	var cover sql.NullInt64
 	var created int64
@@ -182,7 +206,7 @@ func UpdateAlbum(ctx context.Context, v Vault, id int64, title, description stri
 // with the parent: leaving them behind would strand them, still holding
 // photos and reachable from nowhere.
 func DeleteAlbum(ctx context.Context, v Vault, id int64) (int, error) {
-	if _, err := GetAlbum(ctx, v, id); err != nil {
+	if _, err := albumRow(ctx, v, id); err != nil {
 		return 0, err
 	}
 
@@ -239,7 +263,7 @@ func DeleteAlbum(ctx context.Context, v Vault, id int64) (int, error) {
 
 // AlbumItems returns the album's photos in their custom order.
 func AlbumItems(ctx context.Context, v Vault, albumID int64) ([]*AlbumItem, error) {
-	if _, err := GetAlbum(ctx, v, albumID); err != nil {
+	if _, err := albumRow(ctx, v, albumID); err != nil {
 		return nil, err
 	}
 	rows, err := v.DB.QueryContext(ctx, `
@@ -271,7 +295,7 @@ func AlbumItems(ctx context.Context, v Vault, albumID int64) ([]*AlbumItem, erro
 // Media already present is skipped rather than rejected: adding a selection
 // that partly overlaps what is already there should add the rest, not fail.
 func AddToAlbum(ctx context.Context, v Vault, albumID int64, mediaIDs []int64) (int, error) {
-	if _, err := GetAlbum(ctx, v, albumID); err != nil {
+	if _, err := albumRow(ctx, v, albumID); err != nil {
 		return 0, err
 	}
 	if len(mediaIDs) == 0 {
@@ -329,7 +353,7 @@ func AddToAlbum(ctx context.Context, v Vault, albumID int64, mediaIDs []int64) (
 
 // RemoveFromAlbum removes a photo from an album, leaving the photo itself alone.
 func RemoveFromAlbum(ctx context.Context, v Vault, albumID, mediaID int64) error {
-	if _, err := GetAlbum(ctx, v, albumID); err != nil {
+	if _, err := albumRow(ctx, v, albumID); err != nil {
 		return err
 	}
 	res, err := v.DB.ExecContext(ctx,
@@ -353,7 +377,7 @@ func RemoveFromAlbum(ctx context.Context, v Vault, albumID, mediaID int64) error
 // This is one UPDATE of one row. That is the entire point of the sort key being
 // a string.
 func MoveInAlbum(ctx context.Context, v Vault, albumID, mediaID int64, afterID, beforeID *int64) (string, error) {
-	if _, err := GetAlbum(ctx, v, albumID); err != nil {
+	if _, err := albumRow(ctx, v, albumID); err != nil {
 		return "", err
 	}
 
@@ -400,7 +424,7 @@ func MoveInAlbum(ctx context.Context, v Vault, albumID, mediaID int64, afterID, 
 
 // SetAlbumCover picks the thumbnail shown for the album.
 func SetAlbumCover(ctx context.Context, v Vault, albumID int64, mediaID *int64) error {
-	if _, err := GetAlbum(ctx, v, albumID); err != nil {
+	if _, err := albumRow(ctx, v, albumID); err != nil {
 		return err
 	}
 	var arg any
