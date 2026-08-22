@@ -12,16 +12,38 @@ import {
 } from "./albums";
 import { openLightbox } from "./viewer";
 import { UploadPanel } from "./UploadPanel";
+import { AlbumTiles, Breadcrumbs } from "./AlbumTiles";
+import { favoritesOnly, filterFavorites } from "./favorites";
 
+/**
+ * Browsing albums.
+ *
+ * One view for both levels of the idea: with no album open it shows the top
+ * level, and inside an album it shows that album's sub-albums above its own
+ * photos. Splitting "the album list" from "an album" into two screens is what
+ * made the old sidebar necessary in the first place.
+ */
 export function AlbumView() {
   const album = currentAlbum.value;
-  if (!album) return <p class="status">Select an album.</p>;
+
+  if (!album) {
+    return (
+      <div class="album-view">
+        <header class="album-header">
+          <Breadcrumbs />
+        </header>
+        <AlbumTiles parentID={null} />
+      </div>
+    );
+  }
+
+  const shown = filterFavorites(albumItems.value);
 
   return (
     <div class="album-view">
       <header class="album-header">
         <div>
-          <h2>{album.title}</h2>
+          <Breadcrumbs />
           {album.description && <p class="desc">{album.description}</p>}
         </div>
         <span class="spacer" />
@@ -35,6 +57,10 @@ export function AlbumView() {
           {editing.value ? "Done" : "Edit"}
         </button>
       </header>
+
+      {/* Sub-albums sit above the photos: an album can hold both, and the
+          nesting is the thing you navigate by. */}
+      <AlbumTiles parentID={album.id} />
 
       {albumError.value && <p class="status error">{albumError.value}</p>}
 
@@ -57,14 +83,16 @@ export function AlbumView() {
         </p>
       )}
 
-      {albumItems.value.length === 0 ? (
+      {shown.length === 0 ? (
         <p class="empty">
-          {editing.value
-            ? "Drop photos above to add them."
-            : "This album is empty. Use Edit to add photos."}
+          {favoritesOnly.value && albumItems.value.length > 0
+            ? "No favourites in this album."
+            : editing.value
+              ? "Drop photos above to add them."
+              : "No photos here yet. Use Edit to add some."}
         </p>
       ) : (
-        <SortableGrid items={albumItems.value} />
+        <SortableGrid items={shown} />
       )}
     </div>
   );

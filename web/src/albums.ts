@@ -8,8 +8,20 @@ export interface Album {
   id: number;
   title: string;
   description: string;
+  /** Absent at the top level. Albums nest: Croatia -> 2024, 2025. */
+  parent_id?: number;
+  /** This album's own photos. */
   item_count: number;
+  /** Including everything nested inside it, which is what a tile shows. */
+  total_count: number;
   cover_media_id?: number;
+  /**
+   * The picture to show for this album, worked out by the server: chosen by
+   * hand if there is one, else the newest photo, else the best cover among the
+   * sub-albums. A full record rather than an id, so the tile can build a
+   * cacheable URL without another round trip.
+   */
+  cover?: Media;
   created_at: number;
 }
 
@@ -43,10 +55,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const albumApi = {
   list: () => request<{ albums: Album[] }>("/api/albums"),
-  create: (title: string, description = "") =>
+  create: (title: string, description = "", parentID: number | null = null) =>
     request<Album>("/api/albums", {
       method: "POST",
-      body: JSON.stringify({ title, description }),
+      body: JSON.stringify({ title, description, parent_id: parentID }),
     }),
   get: (id: number) => request<Album>(`/api/albums/${id}`),
   update: (id: number, title: string, description: string) =>
@@ -54,7 +66,19 @@ export const albumApi = {
       method: "PATCH",
       body: JSON.stringify({ title, description }),
     }),
-  remove: (id: number) => request<void>(`/api/albums/${id}`, { method: "DELETE" }),
+  remove: (id: number) =>
+    request<{ deleted: number }>(`/api/albums/${id}`, { method: "DELETE" }),
+
+  /** Breadcrumb, root first. */
+  path: (id: number) =>
+    request<{ path: { id: number; title: string }[] }>(`/api/albums/${id}/path`),
+
+  /** Moves an album under another, or to the top level with null. */
+  setParent: (id: number, parentID: number | null) =>
+    request<void>(`/api/albums/${id}/parent`, {
+      method: "PATCH",
+      body: JSON.stringify({ parent_id: parentID }),
+    }),
 
   items: (id: number) => request<{ items: AlbumMedia[] }>(`/api/albums/${id}/items`),
   add: (id: number, mediaIDs: number[]) =>
@@ -82,6 +106,14 @@ export const albumApi = {
 
 export const albums = signal<Album[]>([]);
 export const currentAlbum = signal<Album | null>(null);
+/**
+ * The breadcrumb for the open album, root first.
+ *
+ * Kept as its own signal rather than derived from `albums`, because the album
+ * list is refetched often and the trail must not flicker or vanish while that
+ * is in flight.
+ */
+export const albumPath = signal<{ id: number; title: string }[]>([]);
 export const albumItems = signal<AlbumMedia[]>([]);
 export const albumError = signal<string>("");
 /** Edit mode is what unlocks reordering and the upload area. */
@@ -100,17 +132,47 @@ export async function openAlbum(id: number): Promise<void> {
   albumError.value = "";
   editing.value = false;
   try {
-    const [album, items] = await Promise.all([albumApi.get(id), albumApi.items(id)]);
+    const [album, items, path] = await Promise.all([
+      albumApi.get(id),
+      albumApi.items(id),
+      albumApi.path(id),
+    ]);
     currentAlbum.value = album;
     albumItems.value = items.items ?? [];
+    albumPath.value = path.path ?? [];
   } catch (err) {
     albumError.value = messageOf(err);
   }
 }
 
-export async function createAlbum(title: string): Promise<Album | null> {
+/** Goes back to the top level, where albums are browsed as tiles. */
+export function openLibraryRoot(): void {
+  albumError.value = "";
+  editing.value = false;
+  currentAlbum.value = null;
+  albumItems.value = [];
+  albumPath.value = [];
+}
+
+/**
+ * The albums directly inside a parent, or the top level when null.
+ *
+ * Read from the flat list the server sends rather than fetched per level: a
+ * self-hosted library has tens of albums, not thousands, and one request that
+ * answers every level makes navigating instant.
+ */
+export function childAlbums(parentID: number | null): Album[] {
+  return albums.value.filter((a) =>
+    parentID === null ? a.parent_id === undefined : a.parent_id === parentID,
+  );
+}
+
+export async function createAlbum(
+  title: string,
+  parentID: number | null = null,
+): Promise<Album | null> {
   try {
-    const album = await albumApi.create(title);
+    const album = await albumApi.create(title, "", parentID);
     await loadAlbums();
     return album;
   } catch (err) {
@@ -119,12 +181,31 @@ export async function createAlbum(title: string): Promise<Album | null> {
   }
 }
 
+/**
+ * Moves an album to a new parent.
+ *
+ * The server refuses a move that would make an album its own ancestor; that
+ * error is worth showing rather than swallowing, because from the outside the
+ * drag simply appears to have done nothing.
+ */
+export async function moveAlbum(id: number, parentID: number | null): Promise<void> {
+  albumError.value = "";
+  try {
+    await albumApi.setParent(id, parentID);
+    await loadAlbums();
+  } catch (err) {
+    albumError.value = messageOf(err);
+  }
+}
+
 export async function deleteAlbum(id: number): Promise<void> {
   try {
     await albumApi.remove(id);
-    if (currentAlbum.value?.id === id) {
-      currentAlbum.value = null;
-      albumItems.value = [];
+    // Deleting takes the sub-albums with it, so anything below the deleted
+    // album is gone too -- including, possibly, the one being looked at.
+    const open = currentAlbum.value;
+    if (open && (open.id === id || albumPath.value.some((a) => a.id === id))) {
+      openLibraryRoot();
     }
     await loadAlbums();
   } catch (err) {

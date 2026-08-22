@@ -28,6 +28,7 @@ beforeEach(() => {
     title: "Trip",
     description: "",
     item_count: 4,
+    total_count: 4,
     created_at: 0,
   };
   albumItems.value = [item(10, "a0"), item(20, "a1"), item(30, "a2"), item(40, "a3")];

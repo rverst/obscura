@@ -48,7 +48,7 @@ function fakeServer() {
     }
     if (/^\/api\/albums\/\d+\/items$/.test(path)) return json({ items: [] });
     if (/^\/api\/albums\/\d+$/.test(path)) {
-      return json({ id: 1, title: "A", description: "", item_count: 0, created_at: 0 });
+      return json({ id: 1, title: "A", description: "", item_count: 0, total_count: 0, created_at: 0 });
     }
     if (path === "/api/albums") return json({ albums: [] });
     if (path === "/api/media/check") return json({ exists: false });
@@ -112,10 +112,10 @@ describe("uploads are filed into the album they were queued for", () => {
   });
 
   it("keeps the destination even if the open album changes mid-upload", async () => {
-    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 0, created_at: 0 };
+    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 0, total_count: 0, created_at: 0 };
     enqueue([file("x.jpg")], 1);
     // Navigating away while it is in flight must not redirect the upload.
-    currentAlbum.value = { id: 2, title: "B", description: "", item_count: 0, created_at: 0 };
+    currentAlbum.value = { id: 2, title: "B", description: "", item_count: 0, total_count: 0, created_at: 0 };
     await settle();
     expect(adds).toEqual([{ albumID: 1, mediaIDs: [100] }]);
   });
@@ -124,7 +124,7 @@ describe("uploads are filed into the album they were queued for", () => {
 describe("lightbox browses the collection it was opened from", () => {
   // Reported: a photo removed from an album was still visible in the lightbox.
   it("closes when the photo being viewed is removed from the album", async () => {
-    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 2, created_at: 0 };
+    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 2, total_count: 2, created_at: 0 };
     const album = [albumMedia(1, "a0"), albumMedia(2, "a1")];
     albumItems.value = album;
     openLightbox(album[0]!, album);
@@ -136,7 +136,7 @@ describe("lightbox browses the collection it was opened from", () => {
   });
 
   it("drops a removed photo from the scope without closing on another", async () => {
-    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 3, created_at: 0 };
+    currentAlbum.value = { id: 1, title: "A", description: "", item_count: 3, total_count: 3, created_at: 0 };
     const album = [albumMedia(1, "a0"), albumMedia(2, "a1"), albumMedia(3, "a2")];
     albumItems.value = album;
     openLightbox(album[2]!, album);
