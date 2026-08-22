@@ -184,17 +184,20 @@ func (s *Server) handleRemovePasskey(w http.ResponseWriter, r *http.Request) {
 // passkeysConfigured reports whether the relying party could be built.
 //
 // It cannot be when the server is reached over plain http on something other
-// than localhost: browsers refuse WebAuthn outside a secure context, so the
-// honest answer is that the feature is unavailable here rather than a ceremony
-// that fails halfway.
+// than localhost, or by its IP address: browsers reject both, so the honest
+// answer is that the feature is unavailable here rather than a ceremony that
+// fails halfway.
 func (s *Server) passkeysConfigured(w http.ResponseWriter, r *http.Request) bool {
 	if s.RP == nil {
 		s.fail(w, r, http.StatusNotImplemented, "passkeys are not enabled", nil)
 		return false
 	}
 	if _, err := s.RP.OriginUsable(s.origin(r)); err != nil {
+		// Passed through rather than flattened into one message. The two
+		// reasons need different fixes, and neither discloses anything: both
+		// are about the address the caller used to get here.
 		s.fail(w, r, http.StatusBadRequest,
-			"passkeys need an https address (or localhost)", err)
+			strings.TrimPrefix(err.Error(), "auth: "), err)
 		return false
 	}
 	return true

@@ -79,8 +79,10 @@ export function UnlockMethods() {
           </form>
         ) : (
           <p class="warn">
-            Passkeys need an https address (or localhost) and a browser that
-            supports them. Not available here.
+            Passkeys are not available at this address. They need a hostname
+            rather than an IP — <code>localhost</code> works where{" "}
+            <code>127.0.0.1</code> does not — over https or localhost, and a
+            browser that supports them.
           </p>
         )}
 
