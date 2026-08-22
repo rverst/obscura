@@ -1,3 +1,8 @@
+# Pinned, because compose otherwise names the project after the directory. This
+# repository has already been renamed once, and a rename silently starts a new
+# project with a new empty volume while the old library sits there orphaned.
+name: obscura
+
 services:
   obscura:
     build:
