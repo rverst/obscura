@@ -219,3 +219,18 @@ func (s *Store) updateCredential(ctx context.Context, userID int64, cred *webaut
 	}
 	return nil
 }
+
+// AnyPasskeys reports whether any passkey is registered at all.
+//
+// Asked before signing in, so it cannot be scoped to a user. It tells an
+// unauthenticated caller only that this server has a passkey somewhere, which
+// /api/status already implies by admitting the library exists -- and without it
+// the login screen would have to offer a button that may not work.
+func (s *Store) AnyPasskeys(ctx context.Context) (bool, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM key_slots WHERE kind = ?`, KindPasskey).Scan(&n); err != nil {
+		return false, fmt.Errorf("auth: count passkeys: %w", err)
+	}
+	return n > 0, nil
+}

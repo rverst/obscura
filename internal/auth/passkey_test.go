@@ -24,6 +24,8 @@ func newRP(t *testing.T) (*RelyingParty, *Store, []byte) {
 
 const testOrigin = "https://photos.example.com"
 
+func b64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
+
 // Browsers refuse WebAuthn outside a secure context. Catching that here turns a
 // misconfigured deployment into a startup error instead of a failure inside the
 // browser, where the message is far less obvious.

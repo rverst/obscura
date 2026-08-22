@@ -18,6 +18,12 @@ import (
 	"github.com/rverst/obscura/internal/crypto"
 )
 
+// PRFInfo is the HKDF info string the browser uses to turn the PRF output into
+// the unlock key. It is not a secret; it exists so the same PRF result cannot
+// be reused as a key somewhere else, and it must match the frontend exactly --
+// a mismatch produces a passkey that enrolls and then never unlocks.
+const PRFInfo = "obscura-unlock-v1"
+
 // prfSaltSize is the length of the salt handed to the PRF extension. The
 // authenticator derives a stable secret from (credential, salt), so the salt
 // need only be unique, not secret.
@@ -377,4 +383,13 @@ func (p *RelyingParty) Discard(id string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.ceremonies, id)
+}
+
+// OriginUsable reports whether passkeys can work for an origin, returning the
+// RP ID that would be used. A configured origin overrides the argument.
+func (p *RelyingParty) OriginUsable(origin string) (string, error) {
+	if p.origin != "" {
+		origin = p.origin
+	}
+	return rpIDFor(origin)
 }
