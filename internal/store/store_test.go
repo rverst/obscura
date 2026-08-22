@@ -131,17 +131,31 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	}
 	defer db.Close()
 
-	for i := 0; i < 3; i++ {
+	// Counted after the first run rather than hard-coded: the point is that
+	// running again changes nothing, and a fixed number would just have to be
+	// bumped by whoever adds the next migration.
+	if err := Migrate(db, SetPhotos); err != nil {
+		t.Fatal(err)
+	}
+	var first int
+	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if first == 0 {
+		t.Fatal("no migrations were recorded at all")
+	}
+
+	for i := 0; i < 2; i++ {
 		if err := Migrate(db, SetPhotos); err != nil {
-			t.Fatalf("Migrate run %d: %v", i+1, err)
+			t.Fatalf("Migrate run %d: %v", i+2, err)
 		}
 	}
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("%d migration records after 3 runs, want 1", n)
+	if n != first {
+		t.Fatalf("%d migration records after 3 runs, want %d", n, first)
 	}
 }
 

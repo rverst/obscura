@@ -138,3 +138,94 @@ func TestMigrationsAreNotRepeated(t *testing.T) {
 		t.Fatalf("%d credentials after re-running the migrations, want 1", n)
 	}
 }
+
+// The same guarantee for the photo database.
+//
+// 0002 alters both media and albums. Those tables hold the library itself, so
+// an upgrade that dropped a column, or silently rewrote one, would be the worst
+// possible bug: the photos are still on disk, encrypted, and nothing can list
+// them any more.
+func TestPhotosUpgradeKeepsExistingLibrary(t *testing.T) {
+	db, err := OpenEncrypted(filepath.Join(t.TempDir(), "photos.db"), keyOf(9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	applyUpTo(t, db, SetPhotos, "0001_schema.sql")
+
+	if _, err := db.Exec(
+		`INSERT INTO users(id, username, created_at) VALUES(1, 'ralf', 1700000000)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO media(id, user_id, kind, sha256, orig_filename, bytes, blob_orig, created_at)
+		VALUES(1, 1, 'photo', x'aabb', 'holiday.jpg', 4242, 'blob-1', 1700000000)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO albums(id, user_id, title, description, created_at)
+		VALUES(1, 1, 'Croatia', '', 1700000000)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO album_items(album_id, media_id, sort_key, added_at)
+		VALUES(1, 1, 'a0', 1700000000)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Migrate(db, SetPhotos); err != nil {
+		t.Fatalf("upgrade failed: %v", err)
+	}
+
+	// The photo, its blob pointer and its album membership all survive.
+	var (
+		filename string
+		blob     string
+		bytes    int64
+	)
+	if err := db.QueryRow(
+		`SELECT orig_filename, blob_orig, bytes FROM media WHERE id = 1`).
+		Scan(&filename, &blob, &bytes); err != nil {
+		t.Fatalf("the photo did not survive: %v", err)
+	}
+	if filename != "holiday.jpg" || blob != "blob-1" || bytes != 4242 {
+		t.Fatalf("the record changed: %s %s %d", filename, blob, bytes)
+	}
+	var sortKey string
+	if err := db.QueryRow(
+		`SELECT sort_key FROM album_items WHERE album_id = 1 AND media_id = 1`).
+		Scan(&sortKey); err != nil {
+		t.Fatalf("album membership did not survive: %v", err)
+	}
+	if sortKey != "a0" {
+		t.Fatalf("the curated position changed to %q", sortKey)
+	}
+
+	// The new columns exist and default to "not set" for existing rows -- an
+	// upgrade must not silently favourite the whole library or nest it.
+	var favorited, parent sql.NullInt64
+	if err := db.QueryRow(`SELECT favorited_at FROM media WHERE id = 1`).Scan(&favorited); err != nil {
+		t.Fatalf("favorited_at is missing: %v", err)
+	}
+	if favorited.Valid {
+		t.Fatal("an existing photo came out of the upgrade marked as a favourite")
+	}
+	if err := db.QueryRow(`SELECT parent_id FROM albums WHERE id = 1`).Scan(&parent); err != nil {
+		t.Fatalf("parent_id is missing: %v", err)
+	}
+	if parent.Valid {
+		t.Fatal("an existing album came out of the upgrade nested under something")
+	}
+
+	// And the full-text index still answers, which is the part most likely to
+	// break quietly when its content table is altered.
+	var hits int
+	if err := db.QueryRow(
+		`SELECT count(*) FROM media_fts WHERE media_fts MATCH '"holiday"*'`).Scan(&hits); err != nil {
+		t.Fatalf("search broke in the upgrade: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("%d search hits after the upgrade, want 1", hits)
+	}
+}
