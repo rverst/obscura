@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { mediaURL, type Media } from "./api";
 import { layout, visibleRange, type Row } from "./layout";
 import { hasMore, items, loadError, loading, loadMore } from "./state";
@@ -27,7 +33,8 @@ export function Gallery() {
     if (!el) return;
     const measure = () => {
       const style = getComputedStyle(el);
-      const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const padding =
+        parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
       setWidth(el.clientWidth - padding);
       setViewport(el.clientHeight);
     };
@@ -57,7 +64,12 @@ export function Gallery() {
   // A library that does not fill the first screen would otherwise never trigger
   // the scroll handler, and paging would stall after page one.
   useEffect(() => {
-    if (!loading.value && hasMore() && totalHeight > 0 && totalHeight < viewport) {
+    if (
+      !loading.value &&
+      hasMore() &&
+      totalHeight > 0 &&
+      totalHeight < viewport
+    ) {
       void loadMore();
     }
   }, [totalHeight, viewport]);
@@ -68,7 +80,9 @@ export function Gallery() {
   return (
     <div class="gallery" ref={scroller} onScroll={onScroll}>
       {media.length === 0 && !loading.value && !loadError.value && (
-        <p class="empty">No photos yet. Upload some with the API — see the README.</p>
+        <p class="empty">
+          No photos yet. Upload some with the API — see the README.
+        </p>
       )}
 
       {/* Full-height spacer: the scrollbar reflects the entire library while
@@ -114,7 +128,13 @@ export function durationLabel(media: Media): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function Tile({ media, style }: { media: Media; style: Record<string, string> }) {
+function Tile({
+  media,
+  style,
+}: {
+  media: Media;
+  style: Record<string, string>;
+}) {
   const [loaded, setLoaded] = useState(false);
 
   return (
@@ -146,7 +166,9 @@ function Tile({ media, style }: { media: Media; style: Record<string, string> })
         // ffmpeg being installed.
         <span class="no-poster">video</span>
       )}
-      {media.kind === "video" && <span class="video-badge">{durationLabel(media)}</span>}
+      {media.kind === "video" && (
+        <span class="video-badge">{durationLabel(media)}</span>
+      )}
     </button>
   );
 }

@@ -521,3 +521,81 @@ button.link {
   overflow: hidden;
 }
 .upload-queue .bar .fill { height: 100%; background: var(--accent); transition: width 0.2s ease; }
+
+/* --- unlock methods ------------------------------------------------------- */
+
+.auth .or {
+  margin: 14px 0 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.auth button.passkey {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The panel sits over the gallery rather than replacing it: managing keys is a
+   detour, and coming back to the same scroll position matters. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  overflow-y: auto;
+}
+.overlay .panel {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+.overlay h2 { margin: 0 0 4px; font-size: 18px; }
+.overlay p.hint { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+.overlay .error { color: var(--danger); font-size: 13px; margin: 0 0 14px; }
+
+.slots {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+.slots li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.slots .kind { font-weight: 600; }
+.slots .label {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slots .when { margin-left: auto; color: var(--muted); font-size: 12px; }
+.slots .fixed { color: var(--muted); width: 62px; text-align: center; }
+.slots button.danger { color: var(--danger); border-color: var(--border); }
+.slots button.danger:hover { border-color: var(--danger); }
+
+.add-passkey { display: flex; gap: 8px; margin-bottom: 4px; }
+.add-passkey input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 11px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.add-passkey input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.add-passkey button { white-space: nowrap; }

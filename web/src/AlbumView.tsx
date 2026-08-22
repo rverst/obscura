@@ -136,9 +136,13 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
               draggable={false}
             />
           ) : (
-            <span class="no-poster">{m.kind === "video" ? "video" : "no preview"}</span>
+            <span class="no-poster">
+              {m.kind === "video" ? "video" : "no preview"}
+            </span>
           )}
-          {m.kind === "video" && m.has_thumb && <span class="video-badge">video</span>}
+          {m.kind === "video" && m.has_thumb && (
+            <span class="video-badge">video</span>
+          )}
           {canEdit && (
             <button
               class="remove"

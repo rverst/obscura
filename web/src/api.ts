@@ -58,11 +58,38 @@ export interface MediaPage {
 export interface Status {
   initialized: boolean;
   authenticated: boolean;
+  /** Whether to offer the passkey button at all; see the status handler. */
+  passkeys: boolean;
+}
+
+/** One way to unlock the library: a password, a recovery code or a passkey. */
+export interface UnlockMethod {
+  id: number;
+  kind: "password" | "recovery" | "passkey";
+  label: string;
+  created_at: number;
+  last_used_at?: number;
 }
 
 export interface Me {
   username: string;
-  unlock_via: { id: number; kind: string; label: string; created_at: number }[];
+  unlock_via: UnlockMethod[];
+  /** False when this address cannot do WebAuthn -- plain http, say. */
+  passkeys_ready: boolean;
+}
+
+/** A WebAuthn ceremony as it comes off the wire, binary fields still base64url. */
+export interface PasskeyChallenge {
+  ceremony: string;
+  options: { publicKey: Record<string, unknown> };
+}
+
+export interface PasskeyRegisterChallenge extends PasskeyChallenge {
+  prf_salt: string;
+}
+
+export interface PasskeyLoginChallenge extends PasskeyChallenge {
+  prf_salts: Record<string, string>;
 }
 
 /** Thrown for any non-2xx response, carrying the server's message. */
@@ -95,7 +122,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!resp.ok) {
     const message =
-      (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`;
+      (body as { error?: string } | null)?.error ??
+      `request failed (${resp.status})`;
     throw new ApiError(resp.status, message);
   }
   return body as T;
@@ -106,10 +134,13 @@ export const api = {
   me: () => request<Me>("/api/me"),
 
   setup: (username: string, password: string) =>
-    request<{ username: string; recovery_code: string; warning: string }>("/api/setup", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
+    request<{ username: string; recovery_code: string; warning: string }>(
+      "/api/setup",
+      {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      },
+    ),
 
   login: (username: string, password: string) =>
     request<{ username: string }>("/api/login", {
@@ -125,16 +156,61 @@ export const api = {
 
   logout: () => request<void>("/api/logout", { method: "POST" }),
 
+  passkeyRegisterBegin: () =>
+    request<PasskeyRegisterChallenge>("/api/passkeys/register/begin", {
+      method: "POST",
+    }),
+
+  passkeyRegisterFinish: (body: {
+    ceremony: string;
+    label: string;
+    unlock_key: string;
+    credential: unknown;
+  }) =>
+    request<void>("/api/passkeys/register/finish", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  passkeyRegisterAbort: (ceremony: string) =>
+    request<void>("/api/passkeys/register/abort", {
+      method: "POST",
+      body: JSON.stringify({ ceremony }),
+    }),
+
+  passkeyLoginBegin: (username?: string) =>
+    request<PasskeyLoginChallenge>("/api/passkeys/login/begin", {
+      method: "POST",
+      body: JSON.stringify(username ? { username } : {}),
+    }),
+
+  passkeyLoginFinish: (body: {
+    ceremony: string;
+    unlock_key: string;
+    credential: unknown;
+  }) =>
+    request<{ username: string }>("/api/passkeys/login/finish", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  removePasskey: (id: number) =>
+    request<void>(`/api/passkeys/${id}`, { method: "DELETE" }),
+
   search: (query: string, limit = 100) => {
     const q = new URLSearchParams({ q: query, limit: String(limit) });
     return request<MediaPage>(`/api/media?${q}`);
   },
 
-  trash: (id: number) => request<void>(`/api/media/${id}`, { method: "DELETE" }),
-  restore: (id: number) => request<void>(`/api/media/${id}/restore`, { method: "POST" }),
-  purge: (id: number) => request<void>(`/api/media/${id}/purge`, { method: "DELETE" }),
+  trash: (id: number) =>
+    request<void>(`/api/media/${id}`, { method: "DELETE" }),
+  restore: (id: number) =>
+    request<void>(`/api/media/${id}/restore`, { method: "POST" }),
+  purge: (id: number) =>
+    request<void>(`/api/media/${id}/purge`, { method: "DELETE" }),
   listTrash: () => request<{ items: TrashedMedia[] }>("/api/trash"),
-  emptyTrash: () => request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
+  emptyTrash: () =>
+    request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
 
   listMedia: (cursor?: Cursor, limit = 100) => {
     const q = new URLSearchParams({ limit: String(limit) });

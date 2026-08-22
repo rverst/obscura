@@ -3,6 +3,8 @@ import { Login, RecoveryCodeNotice, Setup } from "./Auth";
 import { Gallery } from "./Gallery";
 import { Lightbox } from "./Lightbox";
 import { SearchView } from "./SearchView";
+import { UnlockMethods } from "./UnlockMethods";
+import { openSecurity, securityOpen } from "./security";
 import { collapsed, Sidebar, toggleSidebar } from "./Sidebar";
 import { TrashView } from "./TrashView";
 import { items, logout, recoveryCode, screen, username, view } from "./state";
@@ -35,11 +37,13 @@ export function App() {
             <h1>obscura</h1>
             {view.value === "all" && (
               <span class="count">
-                {items.value.length} {items.value.length === 1 ? "photo" : "photos"}
+                {items.value.length}{" "}
+                {items.value.length === 1 ? "photo" : "photos"}
               </span>
             )}
             <span class="spacer" />
             <span class="count">{username.value}</span>
+            <button onClick={() => void openSecurity()}>Unlock methods</button>
             <button onClick={() => void logout()}>Lock</button>
           </header>
           <div class="body">
@@ -56,6 +60,7 @@ export function App() {
               )}
             </main>
           </div>
+          {securityOpen.value && <UnlockMethods />}
           {lightbox.value && <Lightbox media={lightbox.value} />}
         </div>
       );

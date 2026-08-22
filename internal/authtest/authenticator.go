@@ -88,12 +88,16 @@ func (a *Authenticator) PRF(salt []byte) []byte {
 
 // UnlockKey is what the browser sends the server: HKDF over the PRF output.
 //
-// The raw PRF result stays on the device; only this derived key leaves it. The
-// info string must match the one the frontend uses, or a passkey enrolled by
-// one and used by the other would silently fail to unwrap.
+// The raw PRF result stays on the device; only this derived key leaves it.
+//
+// Extract-and-expand, not expand alone. WebCrypto's HKDF always extracts first,
+// and this has to agree with it byte for byte or a passkey enrolled in a real
+// browser would produce a different key here -- a mismatch no amount of Go
+// testing would show. The empty salt is what deriveBits does with a
+// zero-length salt, and the info string must likewise match the frontend.
 func (a *Authenticator) UnlockKey(salt []byte, info string) []byte {
 	a.t.Helper()
-	key, err := hkdf.Expand(sha256.New, a.PRF(salt), info, 32)
+	key, err := hkdf.Key(sha256.New, a.PRF(salt), nil, info, 32)
 	if err != nil {
 		a.t.Fatal(err)
 	}

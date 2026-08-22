@@ -118,7 +118,10 @@ function Info({ media }: { media: Media }) {
             <dd>{exif.lens}</dd>
           </>
         )}
-        {(exif?.f_number || exif?.exposure || exif?.iso || exif?.focal_length) && (
+        {(exif?.f_number ||
+          exif?.exposure ||
+          exif?.iso ||
+          exif?.focal_length) && (
           <>
             <dt>Exposure</dt>
             <dd>{formatExposure(exif)}</dd>

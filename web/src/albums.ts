@@ -35,7 +35,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!resp.ok) {
     throw new ApiError(
       resp.status,
-      (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`,
+      (body as { error?: string } | null)?.error ??
+        `request failed (${resp.status})`,
     );
   }
   return body as T;
@@ -54,9 +55,11 @@ export const albumApi = {
       method: "PATCH",
       body: JSON.stringify({ title, description }),
     }),
-  remove: (id: number) => request<void>(`/api/albums/${id}`, { method: "DELETE" }),
+  remove: (id: number) =>
+    request<void>(`/api/albums/${id}`, { method: "DELETE" }),
 
-  items: (id: number) => request<{ items: AlbumMedia[] }>(`/api/albums/${id}/items`),
+  items: (id: number) =>
+    request<{ items: AlbumMedia[] }>(`/api/albums/${id}/items`),
   add: (id: number, mediaIDs: number[]) =>
     request<{ added: number; requested: number }>(`/api/albums/${id}/items`, {
       method: "POST",
@@ -71,11 +74,19 @@ export const albumApi = {
    * Neighbours rather than an index, because an index means nothing if the
    * album changed since it was rendered.
    */
-  move: (id: number, mediaID: number, after: number | null, before: number | null) =>
-    request<{ sort_key: string }>(`/api/albums/${id}/items/${mediaID}/position`, {
-      method: "PATCH",
-      body: JSON.stringify({ after, before }),
-    }),
+  move: (
+    id: number,
+    mediaID: number,
+    after: number | null,
+    before: number | null,
+  ) =>
+    request<{ sort_key: string }>(
+      `/api/albums/${id}/items/${mediaID}/position`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ after, before }),
+      },
+    ),
 };
 
 // --- state ------------------------------------------------------------------
@@ -100,7 +111,10 @@ export async function openAlbum(id: number): Promise<void> {
   albumError.value = "";
   editing.value = false;
   try {
-    const [album, items] = await Promise.all([albumApi.get(id), albumApi.items(id)]);
+    const [album, items] = await Promise.all([
+      albumApi.get(id),
+      albumApi.items(id),
+    ]);
     currentAlbum.value = album;
     albumItems.value = items.items ?? [];
   } catch (err) {
@@ -157,7 +171,10 @@ export async function removeFromAlbum(mediaID: number): Promise<void> {
  * a local order the server rejected would be worse than a visible snap back,
  * because the next reload would undo it anyway.
  */
-export async function moveItem(mediaID: number, toIndex: number): Promise<void> {
+export async function moveItem(
+  mediaID: number,
+  toIndex: number,
+): Promise<void> {
   const album = currentAlbum.value;
   if (!album) return;
 
@@ -194,7 +211,10 @@ export async function moveItem(mediaID: number, toIndex: number): Promise<void> 
  * upload started in one album cannot land in another because the user navigated
  * while it was in flight.
  */
-export async function addToAlbum(albumID: number, mediaIDs: number[]): Promise<void> {
+export async function addToAlbum(
+  albumID: number,
+  mediaIDs: number[],
+): Promise<void> {
   if (mediaIDs.length === 0) return;
   try {
     await albumApi.add(albumID, mediaIDs);

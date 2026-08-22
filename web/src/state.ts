@@ -8,6 +8,7 @@ import { signal } from "@preact/signals";
 import { api, type Cursor, type Media, ApiError } from "./api";
 import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
 import { closeLightbox } from "./viewer";
+import { passkeysAvailable, signInWithPasskey } from "./passkey";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
 
@@ -21,6 +22,15 @@ export const authError = signal<string>("");
 
 /** Shown once after setup, and never retrievable again. */
 export const recoveryCode = signal<string | null>(null);
+
+/**
+ * Whether the login screen offers a passkey.
+ *
+ * Both halves have to hold: the server must have one registered, and this
+ * browser must be able to use it. A button that leads to a dead end is worse
+ * than no button.
+ */
+export const passkeyOffered = signal(false);
 
 export const items = signal<Media[]>([]);
 export const loading = signal(false);
@@ -37,6 +47,7 @@ export async function boot(): Promise<void> {
       return;
     }
     if (!s.authenticated) {
+      passkeyOffered.value = s.passkeys && passkeysAvailable();
       screen.value = "login";
       return;
     }
@@ -61,13 +72,35 @@ export async function login(user: string, password: string): Promise<void> {
   }
 }
 
-export async function loginWithRecovery(user: string, code: string): Promise<void> {
+export async function loginWithRecovery(
+  user: string,
+  code: string,
+): Promise<void> {
   authError.value = "";
   try {
     const res = await api.loginWithRecovery(user, code);
     username.value = res.username;
     await enterGallery();
   } catch (err) {
+    authError.value = messageOf(err);
+  }
+}
+
+/**
+ * Signs in with a passkey.
+ *
+ * No username: a passkey already identifies its owner, so asking first would
+ * be a step that buys nothing.
+ */
+export async function loginWithPasskey(): Promise<void> {
+  authError.value = "";
+  try {
+    username.value = await signInWithPasskey();
+    await enterGallery();
+  } catch (err) {
+    // Dismissing the system dialog raises NotAllowedError. That is someone
+    // changing their mind, not something to report as a failure.
+    if (err instanceof DOMException && err.name === "NotAllowedError") return;
     authError.value = messageOf(err);
   }
 }
@@ -90,6 +123,14 @@ export async function logout(): Promise<void> {
   await api.logout().catch(() => undefined);
   resetLibrary();
   username.value = "";
+  // Ask again what the login screen should offer: a passkey may have been
+  // added or removed during the session that is ending.
+  try {
+    const s = await api.status();
+    passkeyOffered.value = s.passkeys && passkeysAvailable();
+  } catch {
+    passkeyOffered.value = false;
+  }
   screen.value = "login";
 }
 

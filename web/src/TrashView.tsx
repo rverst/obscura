@@ -68,7 +68,9 @@ export function TrashView() {
                   draggable={false}
                 />
               ) : (
-                <span class="no-poster">{m.kind === "video" ? "video" : "no preview"}</span>
+                <span class="no-poster">
+                  {m.kind === "video" ? "video" : "no preview"}
+                </span>
               )}
               {/* The deadline comes from the server with each item, so this
                   cannot drift out of step with the retention policy. */}

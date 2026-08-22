@@ -1,5 +1,11 @@
 import { useCallback, useRef, useState } from "preact/hooks";
-import { clearFinished, enqueue, tasks, uploading, type UploadTask } from "./upload";
+import {
+  clearFinished,
+  enqueue,
+  tasks,
+  uploading,
+  type UploadTask,
+} from "./upload";
 
 /**
  * Scoped drop area, shown only while an album is being edited.
@@ -41,7 +47,8 @@ export function UploadPanel({ albumID }: { albumID?: number }) {
           setOver(false);
           return;
         }
-        if (!(e.currentTarget as Node).contains(e.relatedTarget)) setOver(false);
+        if (!(e.currentTarget as Node).contains(e.relatedTarget))
+          setOver(false);
       }}
       onDrop={(e) => {
         e.preventDefault();
@@ -79,7 +86,9 @@ function UploadQueue({ albumID }: { albumID?: number }) {
   const list = tasks.value.filter((t) => t.albumID === albumID);
   if (list.length === 0) return null;
 
-  const finished = list.filter((t) => t.status === "done" || t.status === "duplicate").length;
+  const finished = list.filter(
+    (t) => t.status === "done" || t.status === "duplicate",
+  ).length;
   const failed = list.filter((t) => t.status === "error").length;
 
   return (
@@ -117,7 +126,10 @@ function QueueRow({ task }: { task: UploadTask }) {
       </div>
       {(task.status === "uploading" || task.status === "processing") && (
         <div class="bar">
-          <div class="fill" style={{ width: `${Math.round(task.progress * 100)}%` }} />
+          <div
+            class="fill"
+            style={{ width: `${Math.round(task.progress * 100)}%` }}
+          />
         </div>
       )}
       {task.error && <div class="err">{task.error}</div>}

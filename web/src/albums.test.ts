@@ -17,7 +17,8 @@ function item(id: number, sortKey: string): AlbumMedia {
   };
 }
 
-let moves: { mediaID: number; after: number | null; before: number | null }[] = [];
+let moves: { mediaID: number; after: number | null; before: number | null }[] =
+  [];
 let failNext = false;
 
 beforeEach(() => {
@@ -30,21 +31,40 @@ beforeEach(() => {
     item_count: 4,
     created_at: 0,
   };
-  albumItems.value = [item(10, "a0"), item(20, "a1"), item(30, "a2"), item(40, "a3")];
+  albumItems.value = [
+    item(10, "a0"),
+    item(20, "a1"),
+    item(30, "a2"),
+    item(40, "a3"),
+  ];
 
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(input);
-    const m = /\/api\/albums\/1\/items\/(\d+)\/position/.exec(path);
-    if (m && init?.method === "PATCH") {
-      const body = JSON.parse(String(init.body)) as { after: number | null; before: number | null };
-      moves.push({ mediaID: Number(m[1]), after: body.after, before: body.before });
-      if (failNext) {
-        return new Response(JSON.stringify({ error: "nope" }), { status: 409 });
+  vi.stubGlobal(
+    "fetch",
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const m = /\/api\/albums\/1\/items\/(\d+)\/position/.exec(path);
+      if (m && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as {
+          after: number | null;
+          before: number | null;
+        };
+        moves.push({
+          mediaID: Number(m[1]),
+          after: body.after,
+          before: body.before,
+        });
+        if (failNext) {
+          return new Response(JSON.stringify({ error: "nope" }), {
+            status: 409,
+          });
+        }
+        return new Response(JSON.stringify({ sort_key: "aZ" }), {
+          status: 200,
+        });
       }
-      return new Response(JSON.stringify({ sort_key: "aZ" }), { status: 200 });
-    }
-    return new Response(JSON.stringify({}), { status: 200 });
-  });
+      return new Response(JSON.stringify({}), { status: 200 });
+    },
+  );
 });
 
 afterEach(() => vi.unstubAllGlobals());
