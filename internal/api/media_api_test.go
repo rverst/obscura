@@ -14,17 +14,27 @@ import (
 	"testing"
 )
 
+// setupAccount creates the single account and signs in.
+//
+// Separate from setupAndLogin because it asks nothing of the image tools: tests
+// that never touch a photograph should still run on a machine without libvips
+// rather than quietly skipping.
+func (h *harness) setupAccount(t *testing.T) {
+	t.Helper()
+	if code, body := h.do("POST", "/api/setup", map[string]string{
+		"username": "ralf", "password": "a-good-password",
+	}); code != 200 {
+		t.Fatalf("setup: %d %v", code, body)
+	}
+}
+
 // setupAndLogin gets the harness to a state where media endpoints are usable.
 func (h *harness) setupAndLogin(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("vipsthumbnail"); err != nil {
 		t.Skip("vipsthumbnail not installed -- run these through `make test` (Docker)")
 	}
-	if code, body := h.do("POST", "/api/setup", map[string]string{
-		"username": "ralf", "password": "a-good-password",
-	}); code != 200 {
-		t.Fatalf("setup: %d %v", code, body)
-	}
+	h.setupAccount(t)
 }
 
 func (h *harness) raw(t *testing.T, method, path string, body io.Reader, headers map[string]string) (*http.Response, []byte) {

@@ -23,10 +23,13 @@ const SessionCookie = "obscura_session"
 type Server struct {
 	Slots    *auth.Store
 	Sessions *auth.Manager
-	Library  *library.Library
-	Uploads  *upload.Manager
-	Blobs    *blob.Store
-	Log      *slog.Logger
+	// RP runs the WebAuthn ceremonies. Nil disables passkeys entirely; the
+	// endpoints then answer 501 rather than half-working.
+	RP      *auth.RelyingParty
+	Library *library.Library
+	Uploads *upload.Manager
+	Blobs   *blob.Store
+	Log     *slog.Logger
 
 	// Assets is the embedded frontend. When nil the API still works and the
 	// UI routes explain that no frontend was built, which is a useful state
@@ -50,6 +53,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.HandleFunc("POST /api/login/recovery", s.handleLoginRecovery)
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
+
+	// Passkeys. Signing in needs no session; enrolling does, because the DEK
+	// has to be wrapped with the key the browser derives.
+	mux.HandleFunc("POST /api/passkeys/login/begin", s.handlePasskeyLoginBegin)
+	mux.HandleFunc("POST /api/passkeys/login/finish", s.handlePasskeyLoginFinish)
+	mux.Handle("POST /api/passkeys/register/begin", s.requireSession(http.HandlerFunc(s.handlePasskeyRegisterBegin)))
+	mux.Handle("POST /api/passkeys/register/finish", s.requireSession(http.HandlerFunc(s.handlePasskeyRegisterFinish)))
+	mux.Handle("POST /api/passkeys/register/abort", s.requireSession(http.HandlerFunc(s.handlePasskeyRegisterAbort)))
+	mux.Handle("DELETE /api/passkeys/{id}", s.requireSession(http.HandlerFunc(s.handleRemovePasskey)))
 
 	mux.Handle("GET /api/me", s.requireSession(http.HandlerFunc(s.handleMe)))
 	mux.Handle("POST /api/password", s.requireSession(http.HandlerFunc(s.handleChangePassword)))
@@ -108,9 +120,20 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, authed := s.session(r)
+
+	// Whether to offer the passkey button. Asked before signing in, so it can
+	// only be a yes/no for the whole server -- the alternative is a button that
+	// sometimes leads nowhere.
+	passkeys := false
+	if s.RP != nil {
+		if _, err := s.RP.OriginUsable(s.origin(r)); err == nil {
+			passkeys, _ = s.Slots.AnyPasskeys(r.Context())
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"initialized":   init,
 		"authenticated": authed,
+		"passkeys":      passkeys,
 	})
 }
 
@@ -250,16 +273,27 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(slots))
 	for _, sl := range slots {
-		out = append(out, map[string]any{
+		entry := map[string]any{
 			"id":         sl.ID,
 			"kind":       sl.Kind,
 			"label":      sl.Label,
 			"created_at": sl.CreatedAt.Unix(),
-		})
+		}
+		if sl.LastUsedAt != nil {
+			entry["last_used_at"] = sl.LastUsedAt.Unix()
+		}
+		out = append(out, entry)
+	}
+	// Whether this browser can be offered enrollment at all -- see origin().
+	passkeys := false
+	if s.RP != nil {
+		_, err := s.RP.OriginUsable(s.origin(r))
+		passkeys = err == nil
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"username":   sess.Username,
-		"unlock_via": out,
+		"username":       sess.Username,
+		"unlock_via":     out,
+		"passkeys_ready": passkeys,
 	})
 }
 
@@ -344,7 +378,14 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	// Bound the size: these endpoints only accept small JSON objects, uploads
 	// go through a separate path.
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	return readJSONLimit(w, r, dst, 64<<10)
+}
+
+// readJSONLimit is readJSON with a different bound, for the passkey endpoints:
+// an attestation object carrying a certificate chain does not fit in the small
+// allowance the rest of the API works with.
+func readJSONLimit(w http.ResponseWriter, r *http.Request, dst any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {

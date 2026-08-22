@@ -45,6 +45,8 @@ func run() error {
 		maxUpload   = flag.Int64("max-upload", 8<<30, "largest single file accepted, in bytes")
 		uploadTTL   = flag.Duration("upload-ttl", time.Hour, "how long an untouched upload survives before it is discarded")
 		concurrency = flag.Int("workers", library.DefaultConcurrency, "how many files are processed at once")
+		origin      = flag.String("origin", "", "public URL of this server, e.g. https://photos.example.com; pins the passkey relying party")
+		rpName      = flag.String("name", "obscura", "library name, shown by the browser when a passkey is used")
 	)
 	flag.Parse()
 
@@ -117,11 +119,24 @@ func run() error {
 		return err
 	}
 
+	// The relying party for passkeys. Without -origin it takes the address from
+	// each request, which keeps a self-hosted install working under whatever
+	// hostname it is reached by -- but then the origin check is only as good as
+	// whatever the proxy passes through. Pinning it is the production answer.
+	rp, err := auth.NewRelyingParty(slots, *origin, *rpName)
+	if err != nil {
+		return err
+	}
+	if *origin == "" {
+		log.Info("passkey origin taken from each request; set -origin to pin it")
+	}
+
 	srv := &api.Server{
 		Assets:      assets,
 		AssetsBuilt: web.Built(),
 		Slots:       slots,
 		Sessions:    sessions,
+		RP:          rp,
 		Library:     lib,
 		Uploads:     uploads,
 		Blobs:       blobs,

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -27,6 +28,9 @@ type harness struct {
 	srv     *httptest.Server
 	client  *http.Client
 	dataDir string
+	slots   *auth.Store
+	authDB  *sql.DB
+	server  *Server
 }
 
 func newHarness(t *testing.T) *harness {
@@ -60,8 +64,18 @@ func newHarness(t *testing.T) *harness {
 	uploads := upload.NewManager(blobs, 16<<20, time.Hour)
 	t.Cleanup(uploads.CloseAll)
 
+	slots := auth.NewStore(authDB)
+	// The relying party takes its origin from the request, which for httptest
+	// is http://127.0.0.1:port -- a loopback address, so browsers would treat
+	// it as a secure context and so does rpIDFor.
+	rp, err := auth.NewRelyingParty(slots, "", "obscura test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	s := &Server{
-		Slots:    auth.NewStore(authDB),
+		Slots:    slots,
+		RP:       rp,
 		Sessions: sessions,
 		Library:  lib,
 		Uploads:  uploads,
@@ -73,7 +87,10 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(srv.Close)
 
 	jar, _ := cookiejar.New(nil)
-	return &harness{t: t, srv: srv, client: &http.Client{Jar: jar}, dataDir: dataDir}
+	return &harness{
+		t: t, srv: srv, client: &http.Client{Jar: jar},
+		dataDir: dataDir, slots: slots, authDB: authDB, server: s,
+	}
 }
 
 // newServerWithAssets builds a Server whose routes include the static handler,
