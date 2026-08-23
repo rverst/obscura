@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/rverst/obscura/internal/order"
 )
 
 // maxAlbumDepth bounds how deeply albums may nest.
@@ -56,13 +58,21 @@ func SetAlbumParent(ctx context.Context, v Vault, albumID int64, parentID *int64
 		}
 	}
 
+	// A position only means something among siblings, so arriving in a new
+	// level means taking a place at the end of it rather than carrying a key
+	// that was ordered against albums it no longer sits beside.
+	key, err := nextAlbumKey(ctx, v, parentID)
+	if err != nil {
+		return err
+	}
+
 	var arg any
 	if parentID != nil {
 		arg = *parentID
 	}
 	res, err := v.DB.ExecContext(ctx, `
-		UPDATE albums SET parent_id = ?
-		 WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, arg, albumID, v.UserID)
+		UPDATE albums SET parent_id = ?, sort_key = ?
+		 WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, arg, key, albumID, v.UserID)
 	if err != nil {
 		return fmt.Errorf("library: move album: %w", err)
 	}
@@ -70,6 +80,144 @@ func SetAlbumParent(ctx context.Context, v Vault, albumID int64, parentID *int64
 		return ErrNotFound
 	}
 	return nil
+}
+
+// MoveAlbumTo places an album between two of its siblings.
+//
+// Neighbours rather than an index, for the same reason photos are moved that
+// way: an index describes a list that may already have changed, a pair of
+// neighbours describes an intention that survives it.
+//
+// Unlike a photo move this rewrites every album in the level. Albums that
+// predate the sort_key column all share the empty key, so there is frequently
+// no gap to bisect; and a level holds tens of albums, not thousands, which is
+// the whole reason the cheaper trick was needed for photos in the first place.
+// Numbering the level outright is one pass that always leaves a total order.
+func MoveAlbumTo(ctx context.Context, v Vault, albumID int64, afterID, beforeID *int64) error {
+	album, err := albumRow(ctx, v, albumID)
+	if err != nil {
+		return err
+	}
+
+	siblings, err := albumLevel(ctx, v, album.ParentID)
+	if err != nil {
+		return err
+	}
+
+	// A neighbour from another level would describe a position that does not
+	// exist here, and silently ignoring it would drop the album somewhere the
+	// user did not point at.
+	indexOf := func(id *int64) (int, error) {
+		if id == nil {
+			return -1, nil
+		}
+		if *id == albumID {
+			return -1, fmt.Errorf("library: an album cannot be its own neighbour")
+		}
+		for i, s := range siblings {
+			if s == *id {
+				return i, nil
+			}
+		}
+		return -1, ErrNotFound
+	}
+	afterAt, err := indexOf(afterID)
+	if err != nil {
+		return err
+	}
+	beforeAt, err := indexOf(beforeID)
+	if err != nil {
+		return err
+	}
+
+	was := -1
+	ordered := make([]int64, 0, len(siblings))
+	for i, s := range siblings {
+		if s == albumID {
+			was = i
+			continue
+		}
+		ordered = append(ordered, s)
+	}
+
+	// The neighbour indices were read from the level with the album still in
+	// it, so anything that sat behind it shifts by one once it is lifted out.
+	shift := func(at int) int {
+		if was >= 0 && at > was {
+			return at - 1
+		}
+		return at
+	}
+
+	var at int
+	switch {
+	case afterAt >= 0:
+		at = shift(afterAt) + 1
+	case beforeAt >= 0:
+		at = shift(beforeAt)
+	default:
+		// Neither neighbour means the very end -- what a drop past the last
+		// tile and a drop into an empty level have in common.
+		at = len(ordered)
+	}
+	if at > len(ordered) {
+		at = len(ordered)
+	}
+	ordered = append(ordered[:at:at], append([]int64{albumID}, ordered[at:]...)...)
+
+	tx, err := v.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("library: begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	key := ""
+	for _, id := range ordered {
+		key, err = order.Between(key, "")
+		if err != nil {
+			return fmt.Errorf("library: album key after %q: %w", key, err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE albums SET sort_key = ? WHERE id = ? AND user_id = ?`,
+			key, id, v.UserID); err != nil {
+			return fmt.Errorf("library: write album position: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("library: commit: %w", err)
+	}
+	return nil
+}
+
+// albumLevel returns the ids of one level, in the order it is displayed in.
+func albumLevel(ctx context.Context, v Vault, parentID *int64) ([]int64, error) {
+	var rows *sql.Rows
+	var err error
+	if parentID == nil {
+		rows, err = v.DB.QueryContext(ctx, `
+			SELECT id FROM albums
+			 WHERE user_id = ? AND parent_id IS NULL AND deleted_at IS NULL
+			 ORDER BY sort_key, title COLLATE NOCASE`, v.UserID)
+	} else {
+		rows, err = v.DB.QueryContext(ctx, `
+			SELECT id FROM albums
+			 WHERE user_id = ? AND parent_id = ? AND deleted_at IS NULL
+			 ORDER BY sort_key, title COLLATE NOCASE`, v.UserID, *parentID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("library: read album level: %w", err)
+	}
+	defer rows.Close()
+
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // AlbumPath returns the albums from the root down to id, inclusive.
@@ -161,9 +309,14 @@ func explicitCovers(ctx context.Context, v Vault) (map[int64]*Media, error) {
 // resolveCovers fills in Cover for every album.
 //
 // The order is: whatever was chosen by hand, else this album's newest photo,
-// else the best cover of a sub-album. That last step is what stops a parent
+// else the cover of the first sub-album. That last step is what stops a parent
 // like "Croatia" -- which holds no photos itself, only the years -- from
 // showing an empty tile.
+//
+// First rather than newest, because the sub-albums are shown in that order
+// directly beneath the tile: the picture on the parent is then the picture on
+// the tile the eye lands on next, instead of one from somewhere further down
+// that looks arbitrary until you go looking for it.
 func resolveCovers(albums []*Album, explicit, newest map[int64]*Media) {
 	children := make(map[int64][]*Album, len(albums))
 	for _, a := range albums {
@@ -191,13 +344,13 @@ func resolveCovers(albums []*Album, explicit, newest map[int64]*Media) {
 		} else if m, ok := newest[a.ID]; ok {
 			cover = m
 		} else {
-			// The newest photo among the sub-albums, so a parent shows the
-			// most recent thing under it rather than an arbitrary child.
+			// children preserves the order the albums were listed in, so the
+			// first sub-album that has a cover to give is the one on screen
+			// first.
 			for _, c := range children[a.ID] {
 				if m := resolve(c, depth+1); m != nil {
-					if cover == nil || m.SortTime().After(cover.SortTime()) {
-						cover = m
-					}
+					cover = m
+					break
 				}
 			}
 		}

@@ -146,7 +146,11 @@ func TestDeletingAParentTakesTheSubtree(t *testing.T) {
 }
 
 // A parent that holds only sub-albums would otherwise show an empty tile.
-func TestCoverFallsBackToTheNewestSubAlbum(t *testing.T) {
+//
+// The cover comes from the FIRST sub-album, which is the one shown directly
+// beneath the parent's tile -- not the newest photo somewhere under it, which
+// looks arbitrary until you go hunting for where it came from.
+func TestCoverFallsBackToTheFirstSubAlbum(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 
@@ -186,8 +190,10 @@ func TestCoverFallsBackToTheNewestSubAlbum(t *testing.T) {
 	if parent.Cover == nil {
 		t.Fatal("the parent album has no cover at all")
 	}
-	if parent.Cover.ID != newer.ID {
-		t.Fatalf("cover = %s, want the newest photo beneath it", parent.Cover.Filename)
+	// 2024 sits before 2025, so its photo is the one on the parent -- even
+	// though the photo in 2025 is newer.
+	if parent.Cover.ID != older.ID {
+		t.Fatalf("cover = %s, want the photo from the first sub-album", parent.Cover.Filename)
 	}
 	// And the count is the whole subtree, not the parent's own zero.
 	if parent.ItemCount != 0 {
@@ -317,4 +323,108 @@ func TestOneAlbumReadsTheSameThroughBothEndpoints(t *testing.T) {
 		t.Fatalf("ItemCount = %d, TotalCount = %d; want 0 and 1",
 			fetched.ItemCount, fetched.TotalCount)
 	}
+}
+
+// titlesAt reads one level back in the order it would be displayed in.
+func titlesAt(t *testing.T, f *fixture, parent *int64) []string {
+	t.Helper()
+	albums, err := ListAlbums(context.Background(), f.vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, a := range albums {
+		switch {
+		case parent == nil && a.ParentID == nil:
+			out = append(out, a.Title)
+		case parent != nil && a.ParentID != nil && *a.ParentID == *parent:
+			out = append(out, a.Title)
+		}
+	}
+	return out
+}
+
+func TestAlbumsAreOrderedByHand(t *testing.T) {
+	f := newMetadataFixture(t)
+	ctx := context.Background()
+
+	// Created in this order, so this is the order they start in.
+	alps := mustAlbum(t, f, "Alps", nil)
+	mustAlbum(t, f, "Bornholm", nil)
+	croatia := mustAlbum(t, f, "Croatia", nil)
+
+	if got := titlesAt(t, f, nil); !equalTitles(got, []string{"Alps", "Bornholm", "Croatia"}) {
+		t.Fatalf("initial order = %v", got)
+	}
+
+	// Croatia to the very front: no neighbour after it, Alps before it.
+	if err := MoveAlbumTo(ctx, f.vault, croatia.ID, nil, &alps.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := titlesAt(t, f, nil); !equalTitles(got, []string{"Croatia", "Alps", "Bornholm"}) {
+		t.Fatalf("after moving Croatia to the front = %v", got)
+	}
+
+	// And back to the end. Neither neighbour given means "past everything",
+	// which is what a drop in the empty space after the last tile looks like.
+	if err := MoveAlbumTo(ctx, f.vault, croatia.ID, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := titlesAt(t, f, nil); !equalTitles(got, []string{"Alps", "Bornholm", "Croatia"}) {
+		t.Fatalf("after moving Croatia back to the end = %v", got)
+	}
+}
+
+func TestAlbumOrderIsPerLevel(t *testing.T) {
+	f := newMetadataFixture(t)
+	ctx := context.Background()
+
+	croatia := mustAlbum(t, f, "Croatia", nil)
+	y2024 := mustAlbum(t, f, "2024", &croatia.ID)
+	y2025 := mustAlbum(t, f, "2025", &croatia.ID)
+
+	if err := MoveAlbumTo(ctx, f.vault, y2025.ID, nil, &y2024.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := titlesAt(t, f, &croatia.ID); !equalTitles(got, []string{"2025", "2024"}) {
+		t.Fatalf("sub-album order = %v", got)
+	}
+
+	// A neighbour from another level describes a position that does not exist
+	// here; dropping the album somewhere else instead would be worse than
+	// refusing.
+	if err := MoveAlbumTo(ctx, f.vault, y2024.ID, &croatia.ID, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("moving next to a non-sibling: %v, want ErrNotFound", err)
+	}
+}
+
+// Re-parenting has to hand out a fresh position: the old one was ordered
+// against albums this one no longer sits beside.
+func TestReparentedAlbumLandsAtTheEnd(t *testing.T) {
+	f := newMetadataFixture(t)
+	ctx := context.Background()
+
+	croatia := mustAlbum(t, f, "Croatia", nil)
+	mustAlbum(t, f, "2024", &croatia.ID)
+	mustAlbum(t, f, "2025", &croatia.ID)
+	stray := mustAlbum(t, f, "Aarhus", nil)
+
+	if err := SetAlbumParent(ctx, f.vault, stray.ID, &croatia.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := titlesAt(t, f, &croatia.ID); !equalTitles(got, []string{"2024", "2025", "Aarhus"}) {
+		t.Fatalf("after re-parenting = %v", got)
+	}
+}
+
+func equalTitles(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }

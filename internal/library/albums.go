@@ -28,8 +28,11 @@ type Album struct {
 	TotalCount int
 	// Cover is the picture to show for this album, resolved rather than
 	// stored: chosen by hand if there is one, else the newest photo, else the
-	// best cover among the sub-albums. See resolveCovers.
-	Cover     *Media
+	// cover of the first sub-album. See resolveCovers.
+	Cover *Media
+	// SortKey is this album's position among its siblings. Empty means the
+	// album has never been placed by hand and falls back to title order.
+	SortKey   string
 	CreatedAt time.Time
 }
 
@@ -52,11 +55,21 @@ func CreateAlbum(ctx context.Context, v Vault, title, description string, parent
 		}
 		parent = *parentID
 	}
-	a := &Album{Title: title, Description: description, ParentID: parentID, CreatedAt: time.Now()}
+	// A new album goes to the end of its level rather than into the middle of
+	// an arrangement someone made by hand.
+	key, err := nextAlbumKey(ctx, v, parentID)
+	if err != nil {
+		return nil, err
+	}
+
+	a := &Album{
+		Title: title, Description: description, ParentID: parentID,
+		SortKey: key, CreatedAt: time.Now(),
+	}
 	if err := v.DB.QueryRowContext(ctx, `
-		INSERT INTO albums(user_id, title, description, parent_id, created_at)
-		VALUES(?, ?, ?, ?, ?) RETURNING id`,
-		v.UserID, title, description, parent, a.CreatedAt.Unix()).Scan(&a.ID); err != nil {
+		INSERT INTO albums(user_id, title, description, parent_id, sort_key, created_at)
+		VALUES(?, ?, ?, ?, ?, ?) RETURNING id`,
+		v.UserID, title, description, parent, key, a.CreatedAt.Unix()).Scan(&a.ID); err != nil {
 		return nil, fmt.Errorf("library: create album: %w", err)
 	}
 	return a, nil
@@ -69,14 +82,14 @@ func CreateAlbum(ctx context.Context, v Vault, title, description string, parent
 // media, and albums are few enough that the join costs nothing.
 func ListAlbums(ctx context.Context, v Vault) ([]*Album, error) {
 	rows, err := v.DB.QueryContext(ctx, `
-		SELECT a.id, a.title, a.description, a.parent_id, a.cover_media_id, a.created_at,
-		       count(ai.media_id)
+		SELECT a.id, a.title, a.description, a.parent_id, a.cover_media_id,
+		       a.sort_key, a.created_at, count(ai.media_id)
 		  FROM albums a
 		  LEFT JOIN album_items ai ON ai.album_id = a.id
 		  LEFT JOIN media m ON m.id = ai.media_id AND m.deleted_at IS NULL
 		 WHERE a.user_id = ? AND a.deleted_at IS NULL AND (ai.media_id IS NULL OR m.id IS NOT NULL)
 		 GROUP BY a.id
-		 ORDER BY a.title COLLATE NOCASE`, v.UserID)
+		 ORDER BY a.sort_key, a.title COLLATE NOCASE`, v.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("library: list albums: %w", err)
 	}
@@ -87,8 +100,8 @@ func ListAlbums(ctx context.Context, v Vault) ([]*Album, error) {
 		a := &Album{}
 		var parent, cover sql.NullInt64
 		var created int64
-		if err := rows.Scan(&a.ID, &a.Title, &a.Description, &parent, &cover, &created,
-			&a.ItemCount); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Description, &parent, &cover,
+			&a.SortKey, &created, &a.ItemCount); err != nil {
 			return nil, err
 		}
 		if parent.Valid {
@@ -153,13 +166,14 @@ func albumRow(ctx context.Context, v Vault, id int64) (*Album, error) {
 	var created int64
 	var parent sql.NullInt64
 	err := v.DB.QueryRowContext(ctx, `
-		SELECT a.id, a.title, a.description, a.parent_id, a.cover_media_id, a.created_at,
+		SELECT a.id, a.title, a.description, a.parent_id, a.cover_media_id,
+		       a.sort_key, a.created_at,
 		       (SELECT count(*) FROM album_items ai
 		          JOIN media m ON m.id = ai.media_id AND m.deleted_at IS NULL
 		         WHERE ai.album_id = a.id)
 		  FROM albums a
 		 WHERE a.id = ? AND a.user_id = ? AND a.deleted_at IS NULL`, id, v.UserID).
-		Scan(&a.ID, &a.Title, &a.Description, &parent, &cover, &created, &a.ItemCount)
+		Scan(&a.ID, &a.Title, &a.Description, &parent, &cover, &a.SortKey, &created, &a.ItemCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -451,6 +465,35 @@ func SetAlbumCover(ctx context.Context, v Vault, albumID int64, mediaID *int64) 
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// nextAlbumKey returns a position at the end of a level.
+//
+// max() over the level rather than a count: albums that predate the sort_key
+// column carry the empty string, and the empty string is what Between reads as
+// "nothing before this", which is precisely the answer wanted there.
+func nextAlbumKey(ctx context.Context, v Vault, parentID *int64) (string, error) {
+	var last sql.NullString
+	var err error
+	if parentID == nil {
+		err = v.DB.QueryRowContext(ctx, `
+			SELECT max(sort_key) FROM albums
+			 WHERE user_id = ? AND parent_id IS NULL AND deleted_at IS NULL`,
+			v.UserID).Scan(&last)
+	} else {
+		err = v.DB.QueryRowContext(ctx, `
+			SELECT max(sort_key) FROM albums
+			 WHERE user_id = ? AND parent_id = ? AND deleted_at IS NULL`,
+			v.UserID, *parentID).Scan(&last)
+	}
+	if err != nil {
+		return "", fmt.Errorf("library: last album key: %w", err)
+	}
+	key, err := order.Between(last.String, "")
+	if err != nil {
+		return "", fmt.Errorf("library: next album key after %q: %w", last.String, err)
+	}
+	return key, nil
+}
 
 func lastSortKey(ctx context.Context, tx *sql.Tx, albumID int64) (string, error) {
 	var key sql.NullString
