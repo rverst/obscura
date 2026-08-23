@@ -64,7 +64,8 @@ function Crumb({ to, label }: { to: number | null; label: string }) {
   const [over, setOver] = useState(false);
   const dragging = draggingAlbum.value;
   // Dropping an album on the level it already sits in is a move to nowhere.
-  const takes = dragging !== null && dragging !== to && parentOf(dragging) !== to;
+  const takes =
+    dragging !== null && dragging !== to && parentOf(dragging) !== to;
 
   return (
     <button
@@ -136,7 +137,8 @@ export function AlbumTiles({ parentID }: { parentID: number | null }) {
   };
 
   const onDrop = (target: Album) => {
-    if (dragging === null || dragging === target.id || !drop) return finishDrag();
+    if (dragging === null || dragging === target.id || !drop)
+      return finishDrag();
     switch (drop.mode) {
       case "into":
         void moveAlbum(dragging, target.id);
@@ -234,11 +236,20 @@ function AllPhotosTile() {
   const sample = useMemo(() => pickSpread(media, MOSAIC_TILES), [media.length]);
 
   return (
-    <button class="tile special" onClick={() => navigate({ view: "all", photo: null })}>
+    <button
+      class="tile special"
+      onClick={() => navigate({ view: "all", photo: null })}
+    >
       {sample.length === MOSAIC_TILES ? (
         <span class="tile-art mosaic" aria-hidden="true">
           {sample.map((m) => (
-            <img key={m.id} src={mediaURL(m, "thumb")} alt="" loading="lazy" decoding="async" />
+            <img
+              key={m.id}
+              src={mediaURL(m, "thumb")}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
           ))}
         </span>
       ) : (
@@ -287,7 +298,8 @@ function AlbumTile({
   const nested = childAlbums(album.id).length;
   const mode = drop?.id === album.id ? drop.mode : null;
   // Where "out" leads: the level above the one this album is on.
-  const outOf = album.parent_id === undefined ? null : parentOf(album.parent_id);
+  const outOf =
+    album.parent_id === undefined ? null : parentOf(album.parent_id);
 
   return (
     <button
@@ -321,7 +333,9 @@ function AlbumTile({
         e.preventDefault();
         onDrop(album);
       }}
-      onClick={() => navigate({ view: "album", albumID: album.id, photo: null })}
+      onClick={() =>
+        navigate({ view: "album", albumID: album.id, photo: null })
+      }
       title={album.title}
     >
       {cover ? (
@@ -355,10 +369,14 @@ function AlbumTile({
         <span class="tile-title">{album.title}</span>
         <span class="tile-meta">
           {album.total_count} {album.total_count === 1 ? "photo" : "photos"}
-          {nested > 0 && <> · {nested} inside</>}
+          {nested > 0 && (
+            <>
+              {" "}
+              · {nested} {nested === 1 ? "album" : "albums"}
+            </>
+          )}
         </span>
       </span>
     </button>
   );
 }
-
