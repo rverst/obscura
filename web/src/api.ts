@@ -104,7 +104,54 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Told when the server says the session is gone.
+ *
+ * A callback registered by state.ts rather than an import of it: api.ts is the
+ * bottom of the stack and everything else is built on it, so reaching upwards
+ * from here would be a cycle.
+ */
+let onExpired: (() => void) | null = null;
+
+export function whenSessionExpires(fn: () => void): void {
+  onExpired = fn;
+}
+
+/**
+ * Reports a response that came back unauthorised.
+ *
+ * Exported for the uploader, which speaks to the server with its own fetches --
+ * it streams binary chunks and reads progress, which this module's JSON request
+ * cannot do. It still has to notice a dead session like everything else.
+ */
+export function noteUnauthorized(status: number): void {
+  if (status === 401) onExpired?.();
+}
+
+/**
+ * Whether this failure is a session that is no longer there.
+ *
+ * The modules that run inside the gallery use it to keep quiet: leaving for the
+ * login screen is the whole of the response, and recording "not logged in" as a
+ * local error as well would leave that message sitting in a signal, to reappear
+ * under the album grid the moment someone signs back in.
+ *
+ * The login screen's own errors deliberately do not use this. A wrong password
+ * is answered with 401 too, and there it is the answer, not a session ending.
+ */
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
+/**
+ * Every request the app makes, and the one place a dead session is noticed.
+ *
+ * Exported because albums.ts had a byte-for-byte copy of this, which is
+ * precisely why clicking an album after the session lapsed reported "not logged
+ * in" as if it were an ordinary failure and left the app looking signed in --
+ * the copy had never been taught what a 401 means.
+ */
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -122,6 +169,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     body = null;
   }
   if (!resp.ok) {
+    // Announced before it is thrown, so a caller that only knows how to show
+    // the message still cannot leave the app sitting on a dead session. Signing
+    // in returns a 401 for a wrong password too, which is why the handler --
+    // not this function -- decides whether one means anything.
+    noteUnauthorized(resp.status);
     const message =
       (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`;
     throw new ApiError(resp.status, message);

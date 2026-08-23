@@ -1,7 +1,7 @@
 // Trash and search state.
 
 import { signal } from "@preact/signals";
-import { api, ApiError, type Media, type TrashedMedia } from "./api";
+import { api, ApiError, isUnauthorized, type Media, type TrashedMedia } from "./api";
 import { albumItems, loadAlbums } from "./albums";
 import { items, reloadTimeline } from "./state";
 import { forgetInViewer } from "./viewer";
@@ -143,6 +143,9 @@ export function clearSearch(): void {
 }
 
 function messageOf(err: unknown): string {
+  // A lapsed session is reported centrally, by leaving for the login screen.
+  // Recording it here too would outlive the session it belongs to.
+  if (isUnauthorized(err)) return "";
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return "something went wrong";

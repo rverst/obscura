@@ -1,7 +1,7 @@
 // Unlock methods: what can open the library, and adding or removing one.
 
 import { signal } from "@preact/signals";
-import { ApiError, api, type UnlockMethod } from "./api";
+import { ApiError, api, isUnauthorized, type UnlockMethod } from "./api";
 import {
   PasskeyUnsupported,
   enrollPasskey,
@@ -72,6 +72,9 @@ export async function removePasskey(id: number): Promise<void> {
 }
 
 function messageOf(err: unknown): string {
+  // A lapsed session is reported centrally, by leaving for the login screen.
+  // Recording it here too would outlive the session it belongs to.
+  if (isUnauthorized(err)) return "";
   // A device that cannot produce key material has its own message, and it is
   // the only one here that tells the user what to do instead.
   if (err instanceof PasskeyUnsupported) return err.message;

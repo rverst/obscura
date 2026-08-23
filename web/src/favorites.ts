@@ -1,7 +1,7 @@
 // Favourites: marking photos, and the filter that shows only those.
 
 import { signal } from "@preact/signals";
-import { ApiError, api, type Media } from "./api";
+import { ApiError, api, isUnauthorized, type Media } from "./api";
 import { albumItems } from "./albums";
 import { items, reloadTimeline } from "./state";
 import { lightbox, lightboxScope } from "./viewer";
@@ -72,6 +72,9 @@ export function filterFavorites<T extends Media>(list: T[]): T[] {
 }
 
 function messageOf(err: unknown): string {
+  // A lapsed session is reported centrally, by leaving for the login screen.
+  // Recording it here too would outlive the session it belongs to.
+  if (isUnauthorized(err)) return "";
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return "something went wrong";

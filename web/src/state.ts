@@ -5,7 +5,7 @@
 // needs on a device where the bundle size is felt.
 
 import { signal } from "@preact/signals";
-import { api, type Cursor, type Media, ApiError } from "./api";
+import { api, whenSessionExpires, type Cursor, type Media, ApiError } from "./api";
 import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
 import { closeLightbox } from "./viewer";
 import { favoritesOnly } from "./favorites";
@@ -130,21 +130,62 @@ export async function setup(user: string, password: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   await api.logout().catch(() => undefined);
-  resetLibrary();
+  toLoginScreen();
   // Back to the front door. Locking the library and having the next person to
   // sign in land in the album the last one was looking at is not what "lock"
   // is meant to mean.
   navigate(ROOT, { replace: true });
+  await refreshUnlockOffer();
+}
+
+/**
+ * The session lapsed while the app was sitting open.
+ *
+ * Every request reports a 401 here, so any click at all -- an album, the trash,
+ * a favourite -- lands on the login screen instead of an error message beside a
+ * library that is no longer there. Only one request had ever noticed, the
+ * timeline's, and even that left the username and the loaded photographs
+ * behind.
+ *
+ * Unlike locking the library by hand this leaves the address alone, so signing
+ * back in returns to the album that was open rather than to the front door. It
+ * is the same person coming back to their own window.
+ */
+function sessionExpired(): void {
+  // Signing in with the wrong password is a 401 too. Anywhere but the gallery,
+  // a 401 is an answer to a question that was asked, not a session going away.
+  // It also collapses the storm when several requests fail at once: the first
+  // one leaves the gallery and the rest fall out here.
+  if (screen.value !== "gallery") return;
+  toLoginScreen();
+  authError.value = "Your session expired. Please sign in again.";
+  void refreshUnlockOffer();
+}
+
+whenSessionExpires(sessionExpired);
+
+/** Drops everything the signed-in session was holding. */
+function toLoginScreen(): void {
+  resetLibrary();
   username.value = "";
-  // Ask again what the login screen should offer: a passkey may have been
-  // added or removed during the session that is ending.
+  // Whatever the last screen had to say about signing in is about a session
+  // that is over. sessionExpired puts its own message back afterwards.
+  authError.value = "";
+  screen.value = "login";
+}
+
+/**
+ * Asks again what the login screen should offer.
+ *
+ * A passkey may have been added or removed during the session that is ending.
+ */
+async function refreshUnlockOffer(): Promise<void> {
   try {
     const s = await api.status();
     passkeyOffered.value = s.passkeys && passkeysAvailable();
   } catch {
     passkeyOffered.value = false;
   }
-  screen.value = "login";
 }
 
 async function enterGallery(): Promise<void> {
@@ -181,11 +222,11 @@ export async function loadMore(): Promise<void> {
     // guards against an empty last page looping forever.
     if (!page.next || fresh.length === 0) exhausted = true;
   } catch (err) {
-    if (err instanceof ApiError && err.status === 401) {
-      screen.value = "login";
-      return;
+    // A lapsed session has already been dealt with centrally; saying so again
+    // here would put "not logged in" under the login form.
+    if (!(err instanceof ApiError && err.status === 401)) {
+      loadError.value = messageOf(err);
     }
-    loadError.value = messageOf(err);
   } finally {
     loading.value = false;
   }

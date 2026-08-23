@@ -1,7 +1,7 @@
 // Albums: API calls and the client-side state for viewing and reordering them.
 
 import { signal } from "@preact/signals";
-import { ApiError, type Media } from "./api";
+import { ApiError, isUnauthorized, request, type Media } from "./api";
 import { forgetInViewer } from "./viewer";
 
 export interface Album {
@@ -28,29 +28,6 @@ export interface Album {
 /** A photo inside an album, carrying its position. */
 export interface AlbumMedia extends Media {
   sort_key: string;
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    credentials: "same-origin",
-  });
-  if (resp.status === 204) return undefined as T;
-
-  let body: unknown = null;
-  try {
-    body = await resp.json();
-  } catch {
-    body = null;
-  }
-  if (!resp.ok) {
-    throw new ApiError(
-      resp.status,
-      (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`,
-    );
-  }
-  return body as T;
 }
 
 export const albumApi = {
@@ -419,6 +396,9 @@ export async function refreshAlbumItems(): Promise<void> {
 }
 
 function messageOf(err: unknown): string {
+  // A lapsed session is reported centrally, by leaving for the login screen.
+  // Recording it here too would outlive the session it belongs to.
+  if (isUnauthorized(err)) return "";
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return "something went wrong";

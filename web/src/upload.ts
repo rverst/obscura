@@ -7,7 +7,7 @@
 
 import { signal } from "@preact/signals";
 import { addToAlbum } from "./albums";
-import { ApiError, type Media } from "./api";
+import { ApiError, isUnauthorized, noteUnauthorized, type Media } from "./api";
 import { insertMedia } from "./state";
 
 export type TaskStatus =
@@ -252,6 +252,9 @@ async function readJSON(resp: Response): Promise<unknown> {
     body = null;
   }
   if (!resp.ok) {
+    // Every upload request answers through here, so this is the whole of the
+    // uploader's session handling.
+    noteUnauthorized(resp.status);
     const message =
       (body as { error?: string } | null)?.error ?? `request failed (${resp.status})`;
     throw new ApiError(resp.status, message);
@@ -272,6 +275,9 @@ function delay(ms: number): Promise<void> {
 }
 
 function messageOf(err: unknown): string {
+  // A lapsed session is reported centrally, by leaving for the login screen.
+  // Recording it here too would outlive the session it belongs to.
+  if (isUnauthorized(err)) return "";
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return "upload failed";
