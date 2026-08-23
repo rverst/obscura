@@ -160,7 +160,12 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
    whole library while only the visible rows exist in the DOM. */
 .grid { position: relative; width: 100%; }
 
-.tile {
+/* Scoped to .grid, and the album tiles below are scoped to .tiles. Both were
+   plain `.tile` once: the timeline's `position: absolute` then applied to the
+   album tiles too, which stacked them on top of each other, and the fade-in
+   left every album cover at opacity 0 because only the timeline adds `loaded`.
+   One class, two very different things -- so neither may be styled unscoped. */
+.grid .tile {
   position: absolute;
   overflow: hidden;
   border-radius: 4px;
@@ -169,7 +174,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   border: 0;
   padding: 0;
 }
-.tile img {
+.grid .tile img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -178,8 +183,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   opacity: 0;
   transition: opacity 0.18s ease;
 }
-.tile img.loaded { opacity: 1; }
-.tile:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.grid .tile img.loaded { opacity: 1; }
+.grid .tile:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* Shown when a video has no still: undecodable, or uploaded before ffmpeg was
    installed. The file is fine and plays; only the preview is missing. */
@@ -195,7 +200,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   letter-spacing: 0.08em;
 }
 
-.tile .video-badge {
+.grid .tile .video-badge {
   position: absolute;
   right: 6px;
   bottom: 6px;
@@ -241,6 +246,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   background: var(--surface);
   border-left: 1px solid var(--border);
   padding: 20px;
+  /* The bar spans the full width, close button included, so it crosses this
+     panel and used to sit on top of the filename. Clearing it here keeps the
+     close button in the corner, which shortening the bar would not. */
+  padding-top: 58px;
   overflow-y: auto;
 }
 .lightbox .info h3 {
@@ -265,32 +274,110 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   align-items: center;
 }
 .lightbox-bar .info-toggle { margin-left: auto; }
-.lightbox-bar button { background: rgba(0, 0, 0, 0.55); }
+.lightbox-bar button { background: rgba(0, 0, 0, 0.45); }
 .lightbox-bar button.on { border-color: var(--accent); color: var(--accent); }
 .lightbox-bar button.danger { color: var(--danger); }
 .lightbox-bar button.danger:hover { border-color: var(--danger); }
-/* The heart is the one control that has to read at a glance while flicking
-   through a shoot, so it is bigger than the rest and filled when set. */
-.lightbox-bar .fav { font-size: 16px; line-height: 1; padding: 5px 10px; }
+
+/* The three marks over a photograph are round and quiet: same size, same
+   weight, no words, and dim until the pointer is on one of them. What is on
+   screen is a picture and not a toolbar. */
+.lightbox-bar .fav,
+.lightbox-bar .info-toggle,
+.lightbox-bar .close {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.72);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.lightbox-bar .fav:hover,
+.lightbox-bar .info-toggle:hover,
+.lightbox-bar .close:hover,
+.lightbox-bar button:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.lightbox-bar .fav { font-size: 16px; }
+/* Set is the one state worth seeing without hovering: it is the answer to the
+   question one is asking while flicking through a shoot. */
 .lightbox-bar .fav.on { color: var(--danger); border-color: var(--danger); }
+.lightbox-bar .info-toggle { font-family: Georgia, "Times New Roman", serif; font-size: 15px; font-style: italic; }
+.lightbox-bar .close { font-size: 20px; }
+
+/* The arrows are gone from the picture until they are reached for.
+
+   Each one is an invisible strip down its side of the frame; the chevron fades
+   in when the pointer enters it. Not `.lightbox:hover` -- the lightbox is the
+   whole window, so that would mean "always". The strip stops short of the top
+   and bottom so the backdrop above and below it still closes on a click. */
 .lightbox .nav {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 20px;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.5);
+  top: 22%;
+  bottom: 22%;
+  width: 76px;
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
-.lightbox .nav.prev { left: 12px; }
-.lightbox .nav.next { right: 316px; }
-/* With the detail panel hidden the photo fills the width, so the arrow moves
+.lightbox .nav:hover,
+.lightbox .nav:focus-visible { opacity: 1; }
+
+/* Nothing on screen but the photograph once the pointer stops moving. The
+   hover strips above only ever hid the arrows while the mouse was outside
+   them -- and the lightbox is the whole window, so it never was. */
+.lightbox.idle { cursor: none; }
+.lightbox.idle .lightbox-bar,
+.lightbox.idle .nav {
+  opacity: 0;
+  pointer-events: none;
+}
+.lightbox-bar { transition: opacity 0.25s ease; }
+.lightbox .nav.prev { left: 0; }
+.lightbox .nav.next { right: 300px; }
+/* With the detail panel hidden the photo fills the width, so the strip moves
    back to the edge with it. */
-.lightbox.no-info .nav.next { right: 12px; }
+.lightbox.no-info .nav.next { right: 0; }
+
+/* Choosing a cover reads as a sentence in the detail panel, so it is a full
+   width control there rather than another round mark. */
+.lightbox .info .cover-button {
+  margin-top: 20px;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+}
+.lightbox .info .cover-button.on { border-color: var(--accent); color: var(--accent); }
 
 @media (max-width: 720px) {
   .lightbox { flex-direction: column; }
-  .lightbox .info { flex: 0 0 auto; max-height: 42%; border-left: 0; border-top: 1px solid var(--border); }
-  .lightbox .nav.next { right: 12px; }
+  /* Stacked below the photo here, so the bar is nowhere near the filename. */
+  .lightbox .info {
+    flex: 0 0 auto;
+    max-height: 42%;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
+  }
+  .lightbox .nav.next { right: 0; }
+  /* No pointer to reach for them with, so they simply stay. */
+  .lightbox .nav { opacity: 1; }
 }
 
 /* --- layout --------------------------------------------------------------- */
@@ -365,6 +452,14 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .crumbs button.crumb:hover { color: var(--text); background: var(--bg); }
 .crumbs .crumb.current { color: var(--text); font-weight: 600; }
+/* Lit while a dragged album is over it: this is how an album gets back out of
+   the one it was dropped into. */
+.crumbs .crumb.over {
+  color: var(--text);
+  background: var(--surface);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .crumbs .sep { color: var(--muted); opacity: 0.6; padding: 0 2px; }
 
 .tiles {
@@ -375,52 +470,110 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   gap: 12px;
   margin-bottom: 22px;
 }
-.tile {
+.tiles .tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
-.tile:hover { border-color: var(--accent); }
-.tile.dragging { opacity: 0.4; }
-/* The drop target has to be unmistakable: dropping an album into the wrong
-   one is tedious to undo by hand. */
-.tile.over { outline: 2px solid var(--accent); outline-offset: -2px; }
-.tile .tile-art {
+/* The art is what needed clipping to the rounded corner; the tile itself must
+   not clip, or the insertion bar beside it would be cut in half. */
+.tiles .tile .tile-art { border-radius: 9px 9px 0 0; }
+.tiles .tile:hover { border-color: var(--accent); }
+.tiles .tile.dragging { opacity: 0.4; }
+/* Nesting fills the tile, ordering draws a bar down the side it would land on.
+   One drag does both, so the two have to look nothing alike -- dropping an
+   album into the wrong one is tedious to undo by hand. */
+.tiles .tile.over { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The insertion bar, shared by the album tiles and the photos inside an album:
+   one drag vocabulary, so a bar means the same thing in both places. */
+.tiles .tile.drop-before::before,
+.tiles .tile.drop-after::after,
+.album-tile.drop-before::before,
+.album-tile.drop-after::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
+}
+.tiles .tile.drop-before::before { left: -8px; }
+.tiles .tile.drop-after::after { right: -8px; }
+/* The photo grid is tighter than the album tiles, so its bar sits closer in. */
+.album-tile.drop-before::before { left: -5px; }
+.album-tile.drop-after::after { right: -5px; }
+.tiles .tile[draggable="true"] { cursor: grab; }
+.tiles .tile[draggable="true"]:active { cursor: grabbing; }
+.tiles .tile .tile-art {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   display: block;
   background: var(--bg);
 }
-.tile .tile-art.empty,
-.tile .tile-art.all,
-.tile .tile-art.plus {
+.tiles .tile .tile-art.empty,
+.tiles .tile .tile-art.all,
+.tiles .tile .tile-art.plus {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--muted);
   font-size: 26px;
 }
-.tile .tile-art.all {
+/* Four thumbnails as one picture. A 1px gap rather than a border so the tile
+   still reads as a single object at tile size. */
+.tiles .tile .tile-art.mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  overflow: hidden;
+}
+.tiles .tile .tile-art.mosaic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 0;
+}
+.tiles .tile .tile-art.all {
   background: linear-gradient(135deg, var(--accent) 0%, var(--surface) 100%);
   opacity: 0.85;
 }
-.tile .tile-label { padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; }
-.tile .tile-title {
+.tiles .tile .tile-label { padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; }
+.tiles .tile .tile-title {
   font-size: 13px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tile .tile-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.tile.new { border-style: dashed; }
-.tile.new input {
+.tiles .tile .tile-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tiles .tile .move-out {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 7px;
+  font-size: 14px;
+  line-height: 1.6;
+  background: rgba(0, 0, 0, 0.65);
+  border-color: transparent;
+  color: #fff;
+}
+.tiles .tile .move-out:hover { border-color: var(--accent); color: var(--accent); }
+
+.tiles .tile.new { border-style: dashed; }
+.tiles .tile.new input {
   width: 100%;
   padding: 9px 11px;
   font: inherit;
@@ -429,7 +582,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   border: 0;
   border-top: 1px solid var(--border);
 }
-.tile.new input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tiles .tile.new input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* A trashed tile opens its photo like anywhere else. */
 .album-tile .tile-open {
@@ -454,6 +607,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .album-header h2 { margin: 0; font-size: 18px; }
 .album-header .desc { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
 .album-header .spacer { flex: 1; }
+/* For views that are their own scroller, so the crumbs stay put while the
+   photographs move under them. */
+.view-header { flex: 0 0 auto; padding: 16px 16px 0; margin-bottom: 10px; }
 
 .album-grid {
   display: grid;
@@ -464,17 +620,22 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   position: relative;
   aspect-ratio: 1;
   border-radius: 6px;
-  overflow: hidden;
+  /* Visible, not hidden: the insertion bar sits just outside the tile and
+     would be cut in half. The image carries the rounded corner instead. */
+  overflow: visible;
   background: var(--surface);
   cursor: zoom-in;
 }
-.album-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.album-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px;
+}
 .album-grid.editing .album-tile { cursor: grab; }
 .album-grid.editing .album-tile:active { cursor: grabbing; }
 .album-tile.dragging { opacity: 0.35; }
-/* Marks the slot the photo would land in, on the leading edge so the direction
-   of the move is unambiguous. */
-.album-tile.over { outline: 3px solid var(--accent); outline-offset: -3px; }
 
 .album-tile .video-badge {
   position: absolute;
@@ -488,10 +649,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   pointer-events: none;
 }
 
-.album-tile .remove {
+.album-tile .remove,
+.album-tile .to-trash,
+.grid .tile .to-trash {
   position: absolute;
   top: 4px;
-  right: 4px;
   padding: 0 7px;
   font-size: 15px;
   line-height: 1.5;
@@ -499,6 +661,17 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   border-color: transparent;
   color: #fff;
 }
+.album-tile .remove { right: 4px; }
+/* Opposite corners, because the two do very different things: one takes the
+   photo out of this album, the other takes it out of the library. */
+.album-tile .to-trash,
+.grid .tile .to-trash { left: 4px; }
+.album-tile .to-trash:hover,
+.grid .tile .to-trash:hover { border-color: var(--danger); color: var(--danger); }
+
+/* Edit mode turns the timeline from something to look through into something
+   to prune, so the click target stops promising a zoom. */
+.grid .tile.editing { cursor: default; }
 
 
 .album-tile.trashed img { opacity: 0.55; }
@@ -525,17 +698,23 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .trash-actions button { flex: 1; padding: 4px 6px; font-size: 12px; }
 
-.lightbox .trash-button {
-  position: absolute;
-  top: 12px;
-  right: 328px;
-  z-index: 1;
-  background: rgba(0, 0, 0, 0.55);
+/* An icon button, so it needs a shape of its own -- a bare gear in a text
+   button's padding reads as a stray glyph. Pressed is filled rather than
+   outlined, because with the word "Done" gone the state has only colour left
+   to say it with. */
+.edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  flex: 0 0 auto;
 }
-.lightbox .trash-button:hover { border-color: var(--danger); color: var(--danger); }
-
-@media (max-width: 720px) {
-  .lightbox .trash-button { right: 12px; }
+.edit-toggle.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .edit-hint {
@@ -701,3 +880,77 @@ button.link {
 }
 .add-passkey input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .add-passkey button { white-space: nowrap; }
+
+/* --- the add-from-library sheet ------------------------------------------- */
+
+/* A sheet rather than another panel inside the album: choosing from the whole
+   library needs the room, and it is a decision with an end -- you come back
+   with photographs or you cancel. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  max-height: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sheet-head, .sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  flex: 0 0 auto;
+}
+.sheet-head { border-bottom: 1px solid var(--border); }
+.sheet-foot { border-top: 1px solid var(--border); background: var(--bg); }
+.sheet-head h3 { margin: 0; font-size: 15px; }
+.sheet-head .spacer, .sheet-foot .spacer { flex: 1; }
+.sheet-head .close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+}
+/* The only part that scrolls, so the count and the two buttons stay reachable
+   however far down the library someone has gone. */
+.sheet-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+.sheet-more { text-align: center; margin: 16px 0 0; }
+
+.sheet .album-tile { cursor: pointer; border: 0; padding: 0; }
+.sheet .album-tile.picked img { opacity: 0.75; }
+.sheet .album-tile.picked { outline: 3px solid var(--accent); outline-offset: -3px; }
+/* Already in the album: shown, so the grid still matches the library, but
+   plainly not on offer. */
+.sheet .album-tile.already { cursor: default; opacity: 0.4; }
+.sheet .pick-mark {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+.sheet .album-tile.already .pick-mark { background: var(--muted); }
+
+.add-row { margin: 0 0 12px; }

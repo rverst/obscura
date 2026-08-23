@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
+import { editing } from "./albums";
 import { layout, visibleRange, type Row } from "./layout";
 import { hasMore, items, loadError, loading, loadMore } from "./state";
-import { openLightbox } from "./viewer";
+import { Breadcrumbs } from "./AlbumTiles";
+import { navigate } from "./router";
+import { trashMedia } from "./trash";
 
 const TARGET_ROW_HEIGHT = 220;
 const MAX_ROW_HEIGHT = 380;
@@ -66,22 +69,30 @@ export function Gallery() {
   const visible = rows.slice(start, end);
 
   return (
-    <div class="gallery" ref={scroller} onScroll={onScroll}>
-      {media.length === 0 && !loading.value && !loadError.value && (
-        <p class="empty">No photos yet. Upload some with the API — see the README.</p>
-      )}
+    <>
+      {/* The timeline had no way back to the albums except the brand button,
+          which does not look like navigation. */}
+      <header class="album-header view-header">
+        <Breadcrumbs current="All photos" />
+      </header>
 
-      {/* Full-height spacer: the scrollbar reflects the entire library while
-          only the visible rows exist in the DOM. */}
-      <div class="grid" style={{ height: `${totalHeight}px` }}>
-        {visible.map((row) => (
-          <GridRow key={row.y} row={row} />
-        ))}
+      <div class="gallery" ref={scroller} onScroll={onScroll}>
+        {media.length === 0 && !loading.value && !loadError.value && (
+          <p class="empty">No photos yet. Upload some with the API — see the README.</p>
+        )}
+
+        {/* Full-height spacer: the scrollbar reflects the entire library while
+            only the visible rows exist in the DOM. */}
+        <div class="grid" style={{ height: `${totalHeight}px` }}>
+          {visible.map((row) => (
+            <GridRow key={row.y} row={row} />
+          ))}
+        </div>
+
+        {loading.value && <p class="status">Loading…</p>}
+        {loadError.value && <p class="status error">{loadError.value}</p>}
       </div>
-
-      {loading.value && <p class="status">Loading…</p>}
-      {loadError.value && <p class="status error">{loadError.value}</p>}
-    </div>
+    </>
   );
 }
 
@@ -114,14 +125,34 @@ export function durationLabel(media: Media): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/**
+ * One photo in the timeline.
+ *
+ * A div with a button role rather than a real button, because in edit mode it
+ * holds one -- and a button inside a button is not something a browser will
+ * lay out, never mind read out.
+ */
 function Tile({ media, style }: { media: Media; style: Record<string, string> }) {
   const [loaded, setLoaded] = useState(false);
+  const canEdit = editing.value;
+
+  const open = () => {
+    if (!canEdit) navigate({ view: "all", photo: media.id });
+  };
 
   return (
-    <button
-      class="tile"
+    <div
+      class={`tile ${canEdit ? "editing" : ""}`}
       style={style}
-      onClick={() => openLightbox(media, items.value)}
+      role="button"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
       title={media.filename}
     >
       {media.has_thumb ? (
@@ -147,6 +178,21 @@ function Tile({ media, style }: { media: Media; style: Record<string, string> })
         <span class="no-poster">video</span>
       )}
       {media.kind === "video" && <span class="video-badge">{durationLabel(media)}</span>}
-    </button>
+      {canEdit && (
+        // The only way to delete a photograph that is in no album. It lives
+        // behind Edit for the same reason it left the lightbox: browsing and
+        // deleting should not share a click target.
+        <button
+          class="to-trash"
+          title="Move to trash (kept for thirty days)"
+          onClick={(e) => {
+            e.stopPropagation();
+            void trashMedia(media.id);
+          }}
+        >
+          {"\u{1F5D1}"}
+        </button>
+      )}
+    </div>
   );
 }

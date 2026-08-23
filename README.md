@@ -84,31 +84,82 @@ search and the lightbox. A filter that some screens honour and others quietly
 ignore reads as broken rather than scoped. Press `f` in the lightbox to mark,
 `i` to show or hide the details panel.
 
+The lightbox carries three marks and nothing else — favourite, details, close —
+and they step out of the way, along with the arrows and the cursor, a couple of
+seconds after the pointer stops moving. Any movement brings them back. What is on
+screen is a photograph, not a toolbar. Deleting is deliberately not among them:
+it lives in the grid behind **Edit**, because a delete one key away from the
+arrow keys is a delete waiting to happen by accident.
+
 ### Albums
 
 Albums are views onto the library, not containers: deleting an album never
 deletes photographs, and removing a photo from one leaves the photo alone.
 
-Albums nest — Croatia holds 2024 and 2025 — and a breadcrumb walks back out.
-Dragging one tile onto another moves it; a move that would make an album its own
-ancestor is refused, and the refusal is shown rather than swallowed, because from
-the outside a rejected drag just looks like nothing happened. Deleting an album
-takes its sub-albums with it and says how many went.
+Albums nest — Croatia holds 2024 and 2025 — and a breadcrumb walks back out. One
+drag does two jobs: dropped on the middle of another tile an album nests inside
+it, dropped near a tile's left or right edge it takes a place beside it, and an
+insertion bar says which before the button comes up. A move that would make an
+album its own ancestor is refused, and the refusal is shown rather than
+swallowed, because from the outside a rejected drag just looks like nothing
+happened. Deleting an album takes its sub-albums with it and says how many went.
+
+Dropping an album on a **breadcrumb** moves it back out, to that level — the way
+back up that nesting-by-drag otherwise lacks. Sub-album tiles carry the same move
+as a button, for touch screens and for anyone who would rather not drag.
+
+Levels are ordered independently, and a new album lands at the end of its own
+level rather than in the middle of an arrangement someone made by hand.
 
 A tile shows the whole subtree's count and a cover the server works out: the one
 pinned by hand if there is one, otherwise the album's newest photo, otherwise the
-best cover among its sub-albums — so a parent that holds nothing itself still
-shows a picture. **Cover** in the lightbox pins the open photo, and offers itself
-again to hand the choice back, so the override is not a door that only shuts
-once.
+cover of its first sub-album — so a parent that holds nothing itself still shows
+a picture, and shows the picture from the tile directly beneath it rather than
+one from somewhere further down. The lightbox's detail panel pins the open photo
+as the cover, and offers itself again to hand the choice back, so the override is
+not a door that only shuts once.
 
 Each album keeps its own order. Dragging a photo writes exactly one row, whatever
 the album's size, because a position is a string that can always be subdivided
 rather than an integer that would renumber everything after it. Ten thousand
-photos appended to an album produce a four-character key.
+photos appended to an album produce a four-character key. Albums use the same
+kind of key, but a reorder renumbers the whole level: a level holds tens of
+albums, not thousands, and every album that predates the column shares the same
+empty key, so there is frequently no gap to subdivide.
 
-Uploading and reordering both live in an album's **edit mode**. Outside it the
-album is for looking at: nothing is draggable and there is no drop target.
+An album is filled two ways, both in edit mode: uploading files, and
+**Add from library** for photographs already here. Without the second, removing a
+photo from an album was a one-way door — the only way back in was to upload the
+file again, which is why that × felt more dangerous than the trash, the one place
+that has always had a way back.
+
+Making an album, uploading, reordering and deleting all live in **edit mode** —
+at the top level as well, which is why the top level has an **Edit** button of
+its own. Outside it the library is for looking at: nothing is draggable, there is
+no drop target, and there is no tile for making an album standing in front of the
+real ones.
+
+### Addresses
+
+Every view has a URL, so Back works, a reload lands where it left off, and a
+photograph can be linked to:
+
+```
+/                  the library          /a/{id}      an album
+/all               the timeline         /trash       the trash
+/search?q=…        results              …/p/{id}     a photo open on top of any of them
+```
+
+Navigation is one-directional: an action calls the router, the router sets the
+state. Nothing watches the state in order to write history, so the two cannot
+argue. Opening a photo pushes an entry and closing it pops that entry, while
+stepping between photos replaces — walking two hundred frames should leave one
+thing to go back to, not two hundred. A link followed while the library is locked
+survives the login screen without being stashed anywhere: nothing on the way in
+touches the address bar.
+
+Deep links have always been served: the static handler falls back to the app
+shell for every path outside `/api/`.
 
 ### Video
 

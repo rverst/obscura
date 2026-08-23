@@ -3,14 +3,19 @@ import { mediaURL } from "./api";
 import {
   albumError,
   albumItems,
+  childAlbums,
   currentAlbum,
   deleteAlbum,
   editing,
+  indexForDrop,
   moveItem,
   removeFromAlbum,
   type AlbumMedia,
 } from "./albums";
-import { openLightbox } from "./viewer";
+import { GearIcon } from "./icons";
+import { trashMedia } from "./trash";
+import { navigate } from "./router";
+import { PhotoPicker } from "./PhotoPicker";
 import { UploadPanel } from "./UploadPanel";
 import { AlbumTiles, Breadcrumbs } from "./AlbumTiles";
 import { favoritesOnly, filterFavorites } from "./favorites";
@@ -25,12 +30,15 @@ import { favoritesOnly, filterFavorites } from "./favorites";
  */
 export function AlbumView() {
   const album = currentAlbum.value;
+  const [picking, setPicking] = useState(false);
 
   if (!album) {
     return (
       <div class="album-view">
         <header class="album-header">
           <Breadcrumbs />
+          <span class="spacer" />
+          <EditToggle />
         </header>
         <AlbumTiles parentID={null} />
       </div>
@@ -50,12 +58,7 @@ export function AlbumView() {
         <span class="count">
           {album.item_count} {album.item_count === 1 ? "photo" : "photos"}
         </span>
-        <button
-          class={editing.value ? "primary" : ""}
-          onClick={() => (editing.value = !editing.value)}
-        >
-          {editing.value ? "Done" : "Edit"}
-        </button>
+        <EditToggle />
       </header>
 
       {/* Sub-albums sit above the photos: an album can hold both, and the
@@ -68,33 +71,82 @@ export function AlbumView() {
           is for looking at, and nothing is draggable or droppable. */}
       {editing.value && (
         <>
+          {/* Two ways in, because there are two things people mean by "add":
+              a file from the camera, and a photograph already in the library. */}
+          <p class="add-row">
+            <button onClick={() => setPicking(true)}>Add from library</button>
+          </p>
           <UploadPanel albumID={album.id} />
           <DangerZone albumID={album.id} title={album.title} />
         </>
       )}
 
+      {picking && <PhotoPicker albumID={album.id} onClose={() => setPicking(false)} />}
+
       {editing.value && albumItems.value.length > 0 && (
-        // Says outright what the × does. An album is a view onto the library,
-        // so removing from it keeps the photograph -- but a bare × looks like
-        // a delete, and people should not have to try it to find out.
+        // Says outright what each of the two does. An album is a view onto the
+        // library, so removing from it keeps the photograph -- but a bare ×
+        // looks like a delete, and people should not have to try it to find
+        // out which one they just pressed.
         <p class="edit-hint">
-          Drag to reorder. × removes a photo from this album; it stays in your
-          library.
+          Drag to reorder. × takes a photo out of this album and leaves it in
+          your library, where “Add from library” can put it back. The bin moves
+          it to the trash, kept for thirty days.
         </p>
       )}
 
       {shown.length === 0 ? (
-        <p class="empty">
-          {favoritesOnly.value && albumItems.value.length > 0
-            ? "No favourites in this album."
-            : editing.value
-              ? "Drop photos above to add them."
-              : "No photos here yet. Use Edit to add some."}
-        </p>
+        // An album that holds only sub-albums is not empty and needs no
+        // prompting: the tiles above it are its contents. Saying "no photos
+        // here yet" under them reads as though something were missing.
+        <EmptyAlbum hasSubAlbums={childAlbums(album.id).length > 0} />
       ) : (
         <SortableGrid items={shown} />
       )}
     </div>
+  );
+}
+
+/** What to say, if anything, in an album with no photographs of its own. */
+function EmptyAlbum({ hasSubAlbums }: { hasSubAlbums: boolean }) {
+  if (favoritesOnly.value && albumItems.value.length > 0) {
+    return <p class="empty">No favourites in this album.</p>;
+  }
+  if (editing.value) {
+    return <p class="empty">Drop photos above to add them.</p>;
+  }
+  if (hasSubAlbums) return null;
+  return (
+    <p class="empty">
+      No photos here yet. Use Edit to add some from your library, or upload new
+      ones.
+    </p>
+  );
+}
+
+/**
+ * The one switch between looking and arranging.
+ *
+ * Making an album, reordering, uploading and deleting all sit behind it --
+ * including at the top level, which had no way into edit mode at all and so
+ * showed its one editing control, "New album", to everybody all the time.
+ *
+ * Exported because the timeline needs the same switch and has no header of its
+ * own to put it in; two of these drifting apart would be two answers to "am I
+ * editing?".
+ */
+export function EditToggle() {
+  const on = editing.value;
+  return (
+    <button
+      class={`edit-toggle ${on ? "primary" : ""}`}
+      aria-pressed={on ? "true" : "false"}
+      aria-label={on ? "Done editing" : "Edit"}
+      title={on ? "Done editing" : "Edit"}
+      onClick={() => (editing.value = !on)}
+    >
+      <GearIcon />
+    </button>
   );
 }
 
@@ -109,14 +161,18 @@ export function AlbumView() {
  */
 function SortableGrid({ items }: { items: AlbumMedia[] }) {
   const [dragging, setDragging] = useState<number | null>(null);
-  const [over, setOver] = useState<number | null>(null);
+  // Which side of which tile the photo would land on. The albums above use the
+  // same bar for the same meaning; an outline round the whole tile said "here,
+  // somewhere" and left which side of it to guesswork.
+  const [drop, setDrop] = useState<{ index: number; side: "before" | "after" } | null>(null);
   const canEdit = editing.value;
 
-  const onDrop = (toIndex: number) => {
-    if (dragging === null) return;
-    void moveItem(dragging, toIndex);
+  const onDrop = () => {
+    if (dragging !== null && drop) {
+      void moveItem(dragging, indexForDrop(items, dragging, drop.index, drop.side));
+    }
     setDragging(null);
-    setOver(null);
+    setDrop(null);
   };
 
   return (
@@ -125,7 +181,7 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
         <div
           key={m.id}
           class={`album-tile ${dragging === m.id ? "dragging" : ""} ${
-            over === index ? "over" : ""
+            drop?.index === index && dragging !== m.id ? `drop-${drop.side}` : ""
           }`}
           draggable={canEdit}
           onDragStart={(e) => {
@@ -135,22 +191,28 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
           }}
           onDragEnd={() => {
             setDragging(null);
-            setOver(null);
+            setDrop(null);
           }}
           onDragOver={(e) => {
             if (!canEdit || dragging === null) return;
             // Without preventDefault the browser refuses the drop entirely.
             e.preventDefault();
             if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-            setOver(index);
+            // A plain midpoint split: unlike an album, a photo has no "drop
+            // inside me" case to leave room for.
+            const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const side = e.clientX - box.left < box.width / 2 ? "before" : "after";
+            setDrop({ index, side });
           }}
-          onDragLeave={() => setOver((cur) => (cur === index ? null : cur))}
+          onDragLeave={() => setDrop((cur) => (cur?.index === index ? null : cur))}
           onDrop={(e) => {
             e.preventDefault();
-            onDrop(index);
+            onDrop();
           }}
           onClick={() => {
-            if (!canEdit) openLightbox(m, items);
+            if (canEdit) return;
+            const album = currentAlbum.value;
+            if (album) navigate({ view: "album", albumID: album.id, photo: m.id });
           }}
         >
           {m.has_thumb ? (
@@ -168,16 +230,32 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
           )}
           {m.kind === "video" && m.has_thumb && <span class="video-badge">video</span>}
           {canEdit && (
-            <button
-              class="remove"
-              title="Remove from this album (the photo stays in your library)"
-              onClick={(e) => {
-                e.stopPropagation();
-                void removeFromAlbum(m.id);
-              }}
-            >
-              ×
-            </button>
+            <>
+              {/* Deleting a photograph happens here rather than in the
+                  lightbox: full-screen is for looking at a picture, and a
+                  delete one click from the arrow keys is a delete waiting to
+                  happen by accident. */}
+              <button
+                class="to-trash"
+                title="Move to trash (kept for thirty days)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void trashMedia(m.id);
+                }}
+              >
+                {"\u{1F5D1}"}
+              </button>
+              <button
+                class="remove"
+                title="Remove from this album (the photo stays in your library)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void removeFromAlbum(m.id);
+                }}
+              >
+                ×
+              </button>
+            </>
           )}
         </div>
       ))}

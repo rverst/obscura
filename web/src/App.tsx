@@ -1,4 +1,4 @@
-import { AlbumView } from "./AlbumView";
+import { AlbumView, EditToggle } from "./AlbumView";
 import { Login, RecoveryCodeNotice, Setup } from "./Auth";
 import { Gallery } from "./Gallery";
 import { Lightbox } from "./Lightbox";
@@ -6,11 +6,11 @@ import { SearchView } from "./SearchView";
 import { TrashView } from "./TrashView";
 import { UnlockMethods } from "./UnlockMethods";
 import { UserMenu } from "./UserMenu";
-import { openLibraryRoot } from "./albums";
 import { favoritesOnly, setFavoritesOnly } from "./favorites";
+import { navigate, navigateSearch, ROOT } from "./router";
 import { securityOpen } from "./security";
 import { items, recoveryCode, screen, view } from "./state";
-import { clearSearch, runSearch, searchQuery } from "./trash";
+import { searchQuery } from "./trash";
 import { lightbox } from "./viewer";
 
 export function App() {
@@ -63,11 +63,7 @@ function TopBar() {
       <button
         class="brand"
         title="Back to the library"
-        onClick={() => {
-          view.value = "album";
-          openLibraryRoot();
-          clearSearch();
-        }}
+        onClick={() => navigate(ROOT)}
       >
         obscura
       </button>
@@ -77,19 +73,21 @@ function TopBar() {
         type="search"
         placeholder="Search"
         value={searchQuery.value}
-        onInput={(e) => {
-          const q = (e.target as HTMLInputElement).value;
-          void runSearch(q);
-          // Typing switches to results and clearing the box goes back to the
-          // albums, so there is no separate "search mode" to leave.
-          view.value = q.trim() ? "search" : "album";
-        }}
+        // Typing switches to results and clearing the box goes back to the
+        // albums, so there is no separate "search mode" to leave.
+        onInput={(e) => navigateSearch((e.target as HTMLInputElement).value)}
       />
 
       {view.value === "all" && (
-        <span class="count">
-          {items.value.length} {items.value.length === 1 ? "photo" : "photos"}
-        </span>
+        <>
+          <span class="count">
+            {items.value.length} {items.value.length === 1 ? "photo" : "photos"}
+          </span>
+          {/* The timeline has no header of its own, so its Edit lives here.
+              Without it a photo that is in no album could not be deleted at
+              all, now that the lightbox no longer offers it. */}
+          <EditToggle />
+        </>
       )}
 
       <span class="spacer" />

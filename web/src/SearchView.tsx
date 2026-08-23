@@ -2,7 +2,8 @@ import { mediaURL } from "./api";
 import { durationLabel } from "./Gallery";
 import { favoritesOnly, filterFavorites } from "./favorites";
 import { searching, searchQuery, searchResults } from "./trash";
-import { openLightbox } from "./viewer";
+import { Breadcrumbs } from "./AlbumTiles";
+import { navigate } from "./router";
 
 /**
  * Search results.
@@ -21,7 +22,7 @@ export function SearchView() {
     <div class="album-view">
       <header class="album-header">
         <div>
-          <h2>Search</h2>
+          <Breadcrumbs current="Search" />
           <p class="desc">
             {searching.value
               ? "Searching…"
@@ -42,7 +43,9 @@ export function SearchView() {
             <button
               key={m.id}
               class="album-tile"
-              onClick={() => openLightbox(m, hits)}
+              onClick={() =>
+                navigate({ view: "search", query: searchQuery.value, photo: m.id })
+              }
               title={m.filename}
             >
               {m.has_thumb ? (

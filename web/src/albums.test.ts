@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { albumItems, currentAlbum, moveItem, type AlbumMedia } from "./albums";
+import {
+  albumItems,
+  currentAlbum,
+  indexForDrop,
+  moveItem,
+  type AlbumMedia,
+} from "./albums";
 
 function item(id: number, sortKey: string): AlbumMedia {
   return {
@@ -102,5 +108,43 @@ describe("moveItem", () => {
     await moveItem(999, 0);
     expect(moves).toHaveLength(0);
     expect(order()).toEqual([10, 20, 30, 40]);
+  });
+});
+
+describe("indexForDrop", () => {
+  // Four photos: 10, 20, 30, 40. moveItem takes the index in the list *after*
+  // the dragged photo has been lifted out, which is where the off-by-one hides.
+  const list = [{ id: 10 }, { id: 20 }, { id: 30 }, { id: 40 }];
+
+  it("drops before the first tile", () => {
+    expect(indexForDrop(list, 40, 0, "before")).toBe(0);
+  });
+
+  it("drops after the last tile", () => {
+    expect(indexForDrop(list, 10, 3, "after")).toBe(3);
+  });
+
+  // Dragging forwards: everything behind the photo shifts down one when it
+  // leaves, so the raw target has to come down with it.
+  it("accounts for the gap the photo leaves when it moves forwards", () => {
+    expect(indexForDrop(list, 10, 2, "after")).toBe(2);
+    expect(indexForDrop(list, 10, 2, "before")).toBe(1);
+  });
+
+  // Dragging backwards: the photo comes from behind the target, so nothing in
+  // front of it moves and the index is taken as read.
+  it("leaves the target alone when the photo moves backwards", () => {
+    expect(indexForDrop(list, 40, 1, "before")).toBe(1);
+    expect(indexForDrop(list, 40, 1, "after")).toBe(2);
+  });
+
+  // Both sides of the photo's own tile are where it already is.
+  it("is a no-op on either side of the photo itself", () => {
+    expect(indexForDrop(list, 20, 1, "before")).toBe(1);
+    expect(indexForDrop(list, 20, 1, "after")).toBe(1);
+  });
+
+  it("treats an unknown photo as an insertion", () => {
+    expect(indexForDrop(list, 99, 2, "after")).toBe(3);
   });
 });

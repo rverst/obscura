@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { openLibraryRoot } from "./albums";
+import { navigate } from "./router";
 import { openSecurity } from "./security";
-import { logout, username, view } from "./state";
-import { clearSearch } from "./trash";
+import { logout, username } from "./state";
 
 /**
  * Everything about the account and the library's plumbing, behind one control.
@@ -35,9 +34,7 @@ export function UserMenu() {
   }, [open]);
 
   const go = (to: "trash") => {
-    view.value = to;
-    openLibraryRoot();
-    clearSearch();
+    navigate({ view: to, photo: null });
     setOpen(false);
   };
 

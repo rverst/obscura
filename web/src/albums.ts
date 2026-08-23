@@ -80,6 +80,18 @@ export const albumApi = {
       body: JSON.stringify({ parent_id: parentID }),
     }),
 
+  /**
+   * Places an album between two of its siblings.
+   *
+   * Neighbours rather than an index, for the same reason photos are moved that
+   * way: an index describes a list that may have changed since it was drawn.
+   */
+  setPosition: (id: number, after: number | null, before: number | null) =>
+    request<void>(`/api/albums/${id}/position`, {
+      method: "PATCH",
+      body: JSON.stringify({ after, before }),
+    }),
+
   /** Pins a cover, or hands the choice back to the server with null. */
   setCover: (id: number, mediaID: number | null) =>
     request<void>(`/api/albums/${id}/cover`, {
@@ -125,6 +137,15 @@ export const albumItems = signal<AlbumMedia[]>([]);
 export const albumError = signal<string>("");
 /** Edit mode is what unlocks reordering and the upload area. */
 export const editing = signal(false);
+
+/**
+ * The album currently being dragged, or null.
+ *
+ * A signal rather than component state because the drag starts on a tile and
+ * can end on a breadcrumb, and those are two components with no parent between
+ * them that owns both.
+ */
+export const draggingAlbum = signal<number | null>(null);
 
 export async function loadAlbums(): Promise<void> {
   try {
@@ -174,6 +195,31 @@ export function childAlbums(parentID: number | null): Album[] {
   );
 }
 
+/** The album an album sits in, or null at the top level. */
+export function parentOf(id: number): number | null {
+  const album = albums.value.find((a) => a.id === id);
+  return album?.parent_id ?? null;
+}
+
+/**
+ * The index a photo lands on when dropped beside another.
+ *
+ * moveItem takes the index in the list *after* the dragged photo is lifted out,
+ * so every target behind it shifts down by one. Doing that arithmetic inline in
+ * a drag handler is how off-by-ones get in: dropping "after" the tile you
+ * started from is not the same index as dropping "after" the one before it.
+ */
+export function indexForDrop(
+  items: { id: number }[],
+  draggedID: number,
+  targetIndex: number,
+  side: "before" | "after",
+): number {
+  const from = items.findIndex((m) => m.id === draggedID);
+  const raw = side === "after" ? targetIndex + 1 : targetIndex;
+  return from >= 0 && from < raw ? raw - 1 : raw;
+}
+
 export async function createAlbum(
   title: string,
   parentID: number | null = null,
@@ -201,6 +247,41 @@ export async function moveAlbum(id: number, parentID: number | null): Promise<vo
     await albumApi.setParent(id, parentID);
     await loadAlbums();
   } catch (err) {
+    albumError.value = messageOf(err);
+  }
+}
+
+/**
+ * Reorders an album within its level.
+ *
+ * Optimistic like the photo reorder: the tiles are rearranged locally so the
+ * drop lands where the pointer is, then the server is told. A rejection puts
+ * the previous order back, because the next reload would anyway.
+ */
+export async function reorderAlbum(
+  id: number,
+  after: number | null,
+  before: number | null,
+): Promise<void> {
+  albumError.value = "";
+  const previous = albums.value;
+
+  const moved = previous.find((a) => a.id === id);
+  if (!moved) return;
+  const rest = previous.filter((a) => a.id !== id);
+  const at =
+    after !== null
+      ? rest.findIndex((a) => a.id === after) + 1
+      : before !== null
+        ? rest.findIndex((a) => a.id === before)
+        : rest.length;
+  albums.value = [...rest.slice(0, at), moved, ...rest.slice(at)];
+
+  try {
+    await albumApi.setPosition(id, after, before);
+    await loadAlbums();
+  } catch (err) {
+    albums.value = previous;
     albumError.value = messageOf(err);
   }
 }

@@ -1,27 +1,61 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
 import { albumItems, currentAlbum, setAlbumCover } from "./albums";
 import { setFavorite } from "./favorites";
-import { purgeMedia, restoreMedia, trashMedia } from "./trash";
-import {
-  closeLightbox,
-  infoPinned,
-  isTrashed,
-  lightbox,
-  lightboxScope,
-  toggleInfo,
-} from "./viewer";
+import { closePhoto, showPhoto } from "./router";
+import { purgeMedia, restoreMedia } from "./trash";
+import { infoPinned, isTrashed, lightboxScope, toggleInfo } from "./viewer";
+
+/** How long the pointer must sit still before the controls step out of the way. */
+const IDLE_MS = 2500;
+
+/**
+ * Hides the chrome once the pointer stops moving.
+ *
+ * Hovering already hid the arrows, but a lightbox fills the window -- so as
+ * long as the mouse was anywhere at all, "hovering" was always true and nothing
+ * ever went away. Stillness is the signal that someone is looking at the
+ * photograph rather than working the controls.
+ */
+function useIdle(): boolean {
+  const [idle, setIdle] = useState(false);
+
+  useEffect(() => {
+    // Not `number`: @types/node is in scope for the test helpers, so bare
+    // setTimeout types as Node's.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const wake = () => {
+      setIdle(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => setIdle(true), IDLE_MS);
+    };
+    wake();
+
+    const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
+    for (const name of events) window.addEventListener(name, wake, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      for (const name of events) window.removeEventListener(name, wake);
+    };
+  }, []);
+
+  return idle;
+}
 
 export function Lightbox({ media }: { media: Media }) {
   const all = lightboxScope.value;
   const index = all.findIndex((m) => m.id === media.id);
 
+  // Through the router, not a bare signal write: the URL names the photo on
+  // screen, and stepping past it without saying so would leave a reload or a
+  // copied link pointing at whichever frame the set was entered on.
   const step = (delta: number) => {
     const next = all[index + delta];
-    if (next) lightbox.value = next;
+    if (next) showPhoto(next.id);
   };
 
   const trashed = isTrashed(media);
+  const idle = useIdle();
 
   // Only offered where it means something: the photo has to be in the album
   // whose cover would change. The server enforces the same rule.
@@ -35,7 +69,7 @@ export function Lightbox({ media }: { media: Media }) {
     const onKey = (e: KeyboardEvent) => {
       switch (e.key) {
         case "Escape":
-          closeLightbox();
+          closePhoto();
           break;
         case "ArrowLeft":
           step(-1);
@@ -59,12 +93,15 @@ export function Lightbox({ media }: { media: Media }) {
 
   return (
     <div
-      class={`lightbox ${infoPinned.value ? "" : "no-info"}`}
+      class={`lightbox ${infoPinned.value ? "" : "no-info"} ${idle ? "idle" : ""}`}
       onClick={(e) => {
         // Clicking the backdrop closes; clicking the photo or the panel must not.
-        if (e.target === e.currentTarget) closeLightbox();
+        if (e.target === e.currentTarget) closePhoto();
       }}
     >
+      {/* Three marks and nothing else: the picture is what one came for, and
+          every control here is one that cannot be reached anywhere else.
+          Deleting can -- it lives in the grid, behind Edit. */}
       <div class="lightbox-bar">
         {/* A photo opened from the trash offers the two things that make sense
             there. Showing "Delete" for something already deleted was the
@@ -78,55 +115,34 @@ export function Lightbox({ media }: { media: Media }) {
             </button>
           </>
         ) : (
-          <>
-            <button
-              class={`fav ${media.favorite ? "on" : ""}`}
-              title={media.favorite ? "Remove from favourites (f)" : "Favourite (f)"}
-              aria-pressed={media.favorite ? "true" : "false"}
-              onClick={() => void setFavorite(media.id, !media.favorite)}
-            >
-              {media.favorite ? "\u2665" : "\u2661"}
-            </button>
-            {/* The automatic cover is right most of the time; this is the way
-                to say otherwise, and to take it back. */}
-            {inAlbum && (
-              <button
-                class={`cover-button ${isCover ? "on" : ""}`}
-                title={
-                  isCover
-                    ? "The cover of this album - click to choose it automatically again"
-                    : "Use as this album's cover"
-                }
-                aria-pressed={isCover ? "true" : "false"}
-                onClick={() => void setAlbumCover(isCover ? null : media.id)}
-              >
-                Cover
-              </button>
-            )}
-            {/* Moves the photo to the trash, where it stays recoverable for
-                thirty days. */}
-            <button
-              class="trash-button"
-              title="Move to trash"
-              onClick={() => void trashMedia(media.id)}
-            >
-              Delete
-            </button>
-          </>
+          <button
+            class={`fav ${media.favorite ? "on" : ""}`}
+            title={media.favorite ? "Remove from favourites (f)" : "Favourite (f)"}
+            aria-pressed={media.favorite ? "true" : "false"}
+            onClick={() => void setFavorite(media.id, !media.favorite)}
+          >
+            {media.favorite ? "\u2665" : "\u2661"}
+          </button>
         )}
         <button
           class={`info-toggle ${infoPinned.value ? "on" : ""}`}
           title={infoPinned.value ? "Hide details (i)" : "Show details (i)"}
+          aria-label={infoPinned.value ? "Hide details" : "Show details"}
           aria-pressed={infoPinned.value ? "true" : "false"}
           onClick={toggleInfo}
         >
-          Info
+          {/* The circle is the button itself, drawn in CSS -- a glyph like
+              (i) is at the mercy of whatever font the platform substitutes. */}
+          <span aria-hidden="true">i</span>
         </button>
-        <button class="close" onClick={closeLightbox}>
-          Close
+        <button class="close" onClick={closePhoto} aria-label="Close" title="Close (Esc)">
+          <span aria-hidden="true">{"\u00D7"}</span>
         </button>
       </div>
 
+      {/* The arrows stay out of the way of the photograph and appear when the
+          pointer does. Arrow keys and the edges of the frame both still work
+          without them; a permanent pair of chevrons over a picture does not. */}
       {index > 0 && (
         <button class="nav prev" onClick={() => step(-1)} aria-label="Previous">
           ‹
@@ -153,12 +169,20 @@ export function Lightbox({ media }: { media: Media }) {
         )}
       </div>
 
-      {infoPinned.value && <Info media={media} />}
+      {infoPinned.value && <Info media={media} canCover={inAlbum} isCover={isCover} />}
     </div>
   );
 }
 
-function Info({ media }: { media: Media }) {
+function Info({
+  media,
+  canCover,
+  isCover,
+}: {
+  media: Media;
+  canCover: boolean;
+  isCover: boolean;
+}) {
   const exif = media.exif;
   const taken = media.taken_at ?? media.created_at;
 
@@ -205,6 +229,19 @@ function Info({ media }: { media: Media }) {
           </>
         )}
       </dl>
+
+      {/* Choosing a cover is a fact about the album, not about the photograph
+          on screen, so it sits with the rest of the detail rather than among
+          the three marks over the picture. */}
+      {canCover && (
+        <button
+          class={`cover-button ${isCover ? "on" : ""}`}
+          aria-pressed={isCover ? "true" : "false"}
+          onClick={() => void setAlbumCover(isCover ? null : media.id)}
+        >
+          {isCover ? "Album cover — click to choose automatically" : "Use as album cover"}
+        </button>
+      )}
 
       <p style="margin-top:20px">
         <a href={mediaURL(media, "original")} download={media.filename}>

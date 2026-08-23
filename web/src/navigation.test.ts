@@ -9,6 +9,7 @@ import {
   deleteAlbum,
   moveAlbum,
   openLibraryRoot,
+  parentOf,
   setAlbumCover,
   type Album,
 } from "./albums";
@@ -89,6 +90,38 @@ describe("the album tree", () => {
   it("needs no request to walk a level", () => {
     childAlbums(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// Where "move out" leads. An album tile only ever nested albums deeper; the
+// crumb it is dropped on, and the button beside it, both need to know the level
+// above the one it is on.
+describe("the level above an album", () => {
+  beforeEach(() => {
+    albums.value = [
+      album(1, "Croatia"),
+      album(2, "2024", 1),
+      album(5, "July", 2),
+    ];
+  });
+
+  it("is null for an album at the top", () => {
+    expect(parentOf(1)).toBeNull();
+  });
+
+  it("is the album it sits in", () => {
+    expect(parentOf(2)).toBe(1);
+    expect(parentOf(5)).toBe(2);
+  });
+
+  // Moving a sub-album "out" means to its parent's parent -- one level up, not
+  // to wherever it happens to be already.
+  it("walks up one level at a time", () => {
+    expect(parentOf(parentOf(5)!)).toBe(1);
+  });
+
+  it("is null for an album that is not there", () => {
+    expect(parentOf(999)).toBeNull();
   });
 });
 

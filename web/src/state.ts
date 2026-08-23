@@ -10,6 +10,7 @@ import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
 import { closeLightbox } from "./viewer";
 import { favoritesOnly } from "./favorites";
 import { passkeysAvailable, signInWithPasskey } from "./passkey";
+import { navigate, ROOT, startRouting } from "./router";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
 
@@ -63,6 +64,9 @@ export async function boot(): Promise<void> {
     username.value = me.username;
     screen.value = "gallery";
     await Promise.all([loadMore(), loadAlbums()]);
+    // Last, so the address bar decides what is shown -- and only once there is
+    // a library for it to point into.
+    startRouting();
   } catch (err) {
     authError.value = messageOf(err);
     screen.value = "login";
@@ -127,6 +131,10 @@ export async function setup(user: string, password: string): Promise<void> {
 export async function logout(): Promise<void> {
   await api.logout().catch(() => undefined);
   resetLibrary();
+  // Back to the front door. Locking the library and having the next person to
+  // sign in land in the album the last one was looking at is not what "lock"
+  // is meant to mean.
+  navigate(ROOT, { replace: true });
   username.value = "";
   // Ask again what the login screen should offer: a passkey may have been
   // added or removed during the session that is ending.
@@ -142,8 +150,10 @@ export async function logout(): Promise<void> {
 async function enterGallery(): Promise<void> {
   resetLibrary();
   screen.value = "gallery";
-  view.value = "album";
   await Promise.all([loadMore(), loadAlbums()]);
+  // Nothing on the way in touches the URL, so a link followed while locked is
+  // still sitting in the address bar -- and this is where it is honoured.
+  startRouting();
 }
 
 function resetLibrary(): void {

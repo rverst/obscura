@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { mediaURL } from "./api";
-import { openLightbox } from "./viewer";
+import { Breadcrumbs } from "./AlbumTiles";
+import { navigate } from "./router";
 import {
   daysLeft,
   emptyTrash,
@@ -24,7 +25,7 @@ export function TrashView() {
     <div class="album-view">
       <header class="album-header">
         <div>
-          <h2>Trash</h2>
+          <Breadcrumbs current="Trash" />
           <p class="desc">
             Photos are deleted for good 30 days after you move them here.
           </p>
@@ -66,7 +67,7 @@ export function TrashView() {
               <button
                 class="tile-open"
                 title={`Open ${m.filename}`}
-                onClick={() => openLightbox(m, items)}
+                onClick={() => navigate({ view: "trash", photo: m.id })}
               >
                 {m.has_thumb ? (
                   <img
