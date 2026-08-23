@@ -2,8 +2,19 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 )
+
+// atoi turns an id back into a number, for the request bodies that name one
+// album as another's neighbour.
+func atoi(s string) int64 {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return n
+}
 
 // makeAlbum creates an album and returns its id as a path segment.
 func (h *harness) makeAlbum(t *testing.T, title string) string {
@@ -276,12 +287,72 @@ func TestAlbumEndpointsRequireSession(t *testing.T) {
 		{"GET", "/api/albums/" + albumID + "/items"},
 		{"POST", "/api/albums/" + albumID + "/items"},
 		{"PATCH", "/api/albums/" + albumID + "/items/1/position"},
+		{"PATCH", "/api/albums/" + albumID + "/position"},
 	} {
 		code, _ := h.do(tc.method, tc.path, map[string]any{})
 		if code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a session: %d, want 401", tc.method, tc.path, code)
 		}
 	}
+}
+
+// The tile order is the list order: the client draws the albums in the order
+// they arrive, so this is the whole contract.
+func TestReorderAlbumsOverAPI(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin(t)
+
+	first := h.makeAlbum(t, "Alps")
+	second := h.makeAlbum(t, "Bornholm")
+	third := h.makeAlbum(t, "Croatia")
+
+	if got := h.albumTitles(t); !sameTitles(got, "Alps", "Bornholm", "Croatia") {
+		t.Fatalf("albums arrive as %v", got)
+	}
+
+	code, body := h.do("PATCH", "/api/albums/"+third+"/position",
+		map[string]any{"before": atoi(first)})
+	if code != 204 {
+		t.Fatalf("move album: %d %v", code, body)
+	}
+	if got := h.albumTitles(t); !sameTitles(got, "Croatia", "Alps", "Bornholm") {
+		t.Fatalf("after the move: %v", got)
+	}
+
+	// Named neighbour that is the album itself: a position relative to nothing.
+	if code, _ := h.do("PATCH", "/api/albums/"+second+"/position",
+		map[string]any{"after": atoi(second)}); code != 400 {
+		t.Errorf("moving an album next to itself: %d, want 400", code)
+	}
+	if code, _ := h.do("PATCH", "/api/albums/"+second+"/position",
+		map[string]any{"after": 9999}); code != 404 {
+		t.Errorf("unknown neighbour: %d, want 404", code)
+	}
+}
+
+func (h *harness) albumTitles(t *testing.T) []string {
+	t.Helper()
+	code, body := h.do("GET", "/api/albums", nil)
+	if code != 200 {
+		t.Fatalf("list albums: %d %v", code, body)
+	}
+	var out []string
+	for _, a := range body["albums"].([]any) {
+		out = append(out, a.(map[string]any)["title"].(string))
+	}
+	return out
+}
+
+func sameTitles(got []string, want ...string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestUnknownAlbumIs404(t *testing.T) {

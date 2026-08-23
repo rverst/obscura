@@ -126,6 +126,31 @@ func (s *Server) handleMoveAlbum(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleMoveAlbumTo reorders an album among its siblings.
+func (s *Server) handleMoveAlbumTo(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.albumID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		After  *int64 `json:"after"`
+		Before *int64 `json:"before"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	err := library.MoveAlbumTo(r.Context(), s.vault(r), id, req.After, req.Before)
+	if errors.Is(err, library.ErrNotFound) {
+		s.fail(w, r, http.StatusNotFound, "album or neighbour not found", err)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleAlbumPath returns the breadcrumb, root first.
 func (s *Server) handleAlbumPath(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.albumID(w, r)

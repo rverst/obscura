@@ -96,9 +96,11 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("DELETE /api/albums/{id}", s.requireSession(http.HandlerFunc(s.handleDeleteAlbum)))
 	mux.Handle("PUT /api/albums/{id}/cover", s.requireSession(http.HandlerFunc(s.handleSetAlbumCover)))
 
-	// Sub-albums: the breadcrumb and the move that builds the tree.
+	// Sub-albums: the breadcrumb, the move that builds the tree, and the move
+	// that arranges one level of it.
 	mux.Handle("GET /api/albums/{id}/path", s.requireSession(http.HandlerFunc(s.handleAlbumPath)))
 	mux.Handle("PATCH /api/albums/{id}/parent", s.requireSession(http.HandlerFunc(s.handleMoveAlbum)))
+	mux.Handle("PATCH /api/albums/{id}/position", s.requireSession(http.HandlerFunc(s.handleMoveAlbumTo)))
 
 	// Favourites name the end state rather than toggling; see the handler.
 	mux.Handle("PUT /api/media/{id}/favorite", s.requireSession(s.handleSetFavorite(true)))
