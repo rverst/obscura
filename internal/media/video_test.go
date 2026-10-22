@@ -255,3 +255,37 @@ func TestServeSeekableStopsListening(t *testing.T) {
 		t.Fatal("the helper server is still reachable after stop()")
 	}
 }
+
+// A chosen frame has to be that frame, not the automatic one: two offsets in a
+// moving test pattern must give two different stills.
+func TestPosterAtTakesTheRequestedFrame(t *testing.T) {
+	v := newVideo(t)
+	data := makeVideo(t, "3", 320, 240, true)
+
+	still := func(at time.Duration) []byte {
+		var out bytes.Buffer
+		if err := v.PosterAt(context.Background(), bytes.NewReader(data), int64(len(data)), &out, ThumbSize, at); err != nil {
+			t.Fatalf("PosterAt(%s): %v", at, err)
+		}
+		if _, err := jpeg.DecodeConfig(bytes.NewReader(out.Bytes())); err != nil {
+			t.Fatalf("PosterAt(%s) is not a decodable JPEG: %v", at, err)
+		}
+		return out.Bytes()
+	}
+	if bytes.Equal(still(200*time.Millisecond), still(2500*time.Millisecond)) {
+		t.Fatal("two different offsets produced the same still")
+	}
+}
+
+// Past the end ffmpeg exits cleanly having written nothing. That must surface
+// as an error, not as an empty blob that every tile then fails to decode.
+func TestPosterAtPastTheEndFails(t *testing.T) {
+	v := newVideo(t)
+	data := makeVideo(t, "1", 320, 240, true)
+
+	var out bytes.Buffer
+	err := v.PosterAt(context.Background(), bytes.NewReader(data), int64(len(data)), &out, ThumbSize, 10*time.Second)
+	if !errors.Is(err, ErrNotAVideo) {
+		t.Fatalf("err = %v, want ErrNotAVideo", err)
+	}
+}

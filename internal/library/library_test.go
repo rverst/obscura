@@ -460,3 +460,83 @@ func TestUndecodableVideoIsStoredWithoutPoster(t *testing.T) {
 		t.Fatalf("%d items in the library, want 1", len(items))
 	}
 }
+
+func TestSetPosterReplacesBothStills(t *testing.T) {
+	f := newFixture(t)
+	if f.lib.video == nil {
+		t.Skip("ffmpeg not installed")
+	}
+	m, err := f.upload(t, "pan.mp4", makeClip(t, "3", 640, 480, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.BlobThumb == "" {
+		t.Fatal("no automatic poster to replace")
+	}
+
+	got, err := f.lib.SetPoster(context.Background(), f.vault, m.ID, 2500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BlobThumb == m.BlobThumb || got.BlobPreview == m.BlobPreview {
+		t.Fatal("blob ids unchanged: every cached tile would keep the old still")
+	}
+
+	// The row must say so too, not just the returned record.
+	stored, err := Get(context.Background(), f.vault, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.BlobThumb != got.BlobThumb || stored.BlobPreview != got.BlobPreview {
+		t.Fatal("the database still names the old stills")
+	}
+	for _, id := range []string{got.BlobThumb, got.BlobPreview} {
+		r, err := f.blobs.Open(f.vault.DEK, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := jpeg.DecodeConfig(r); err != nil {
+			t.Fatalf("the new still is not a decodable JPEG: %v", err)
+		}
+		r.Close()
+	}
+	// And the old ones must be gone, or every change leaks two files.
+	for _, id := range []string{m.BlobThumb, m.BlobPreview} {
+		if _, err := f.blobs.Open(f.vault.DEK, id); !errors.Is(err, blob.ErrNotFound) {
+			t.Fatalf("old still %s still present: %v", id, err)
+		}
+	}
+}
+
+func TestSetPosterRejectsOffsetPastTheEnd(t *testing.T) {
+	f := newFixture(t)
+	if f.lib.video == nil {
+		t.Skip("ffmpeg not installed")
+	}
+	m, err := f.upload(t, "short.mp4", makeClip(t, "1", 320, 240, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.lib.SetPoster(context.Background(), f.vault, m.ID, 30*time.Second); !errors.Is(err, ErrBadOffset) {
+		t.Fatalf("err = %v, want ErrBadOffset", err)
+	}
+	// A refused change keeps the stills that were there.
+	stored, err := Get(context.Background(), f.vault, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.BlobThumb != m.BlobThumb {
+		t.Fatal("a refused poster change replaced the still anyway")
+	}
+}
+
+func TestSetPosterRejectsPhoto(t *testing.T) {
+	f := newFixture(t)
+	m, err := f.upload(t, "still.jpg", testJPEG(t, 64, 48))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.lib.SetPoster(context.Background(), f.vault, m.ID, 0); !errors.Is(err, ErrNotVideo) {
+		t.Fatalf("err = %v, want ErrNotVideo", err)
+	}
+}

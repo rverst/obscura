@@ -191,6 +191,48 @@ func (s *Server) handleMediaContent(variant string) http.HandlerFunc {
 	}
 }
 
+// handleSetPoster replaces a video's stills with the frame at at_ms.
+//
+// PUT, because it names the end state: sending the same offset twice yields
+// the same picture. The reply is the updated record, whose new cache tokens are
+// what make every tile showing the clip fetch the new still.
+func (s *Server) handleSetPoster(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.mediaID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		AtMs *int64 `json:"at_ms"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if req.AtMs == nil {
+		s.fail(w, r, http.StatusBadRequest, "at_ms is required", nil)
+		return
+	}
+	if s.Library == nil {
+		s.fail(w, r, http.StatusServiceUnavailable, "video tools are not installed", nil)
+		return
+	}
+
+	m, err := s.Library.SetPoster(r.Context(), s.vault(r), id, time.Duration(*req.AtMs)*time.Millisecond)
+	switch {
+	case errors.Is(err, library.ErrNotFound):
+		s.fail(w, r, http.StatusNotFound, "no such media", err)
+	case errors.Is(err, library.ErrNotVideo):
+		s.fail(w, r, http.StatusBadRequest, "only a video has a poster frame", err)
+	case errors.Is(err, library.ErrBadOffset):
+		s.fail(w, r, http.StatusBadRequest, "no frame at that position", err)
+	case errors.Is(err, library.ErrNoVideoTools):
+		s.fail(w, r, http.StatusServiceUnavailable, "video tools are not installed", err)
+	case err != nil:
+		s.fail(w, r, http.StatusInternalServerError, "cannot set the poster", err)
+	default:
+		writeJSON(w, http.StatusOK, mediaJSON(m))
+	}
+}
+
 // handleCheckHash tells a client whether content is already stored.
 //
 // This is what makes re-adding a folder cheap: the client hashes locally and

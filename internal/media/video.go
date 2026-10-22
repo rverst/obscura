@@ -154,6 +154,43 @@ func (v *Video) Poster(ctx context.Context, src io.ReadSeeker, size int64, dst i
 	return ErrNotAVideo
 }
 
+// PosterAt writes a JPEG still of the frame at the given offset to dst.
+//
+// This is the still someone chose, so unlike Poster there is no fallback: a
+// different frame than the one asked for would be a silent substitution. An
+// offset past the end produces no frame at all, which is reported as
+// ErrNotAVideo rather than as an empty image.
+func (v *Video) PosterAt(ctx context.Context, src io.ReadSeeker, size int64, dst io.Writer, maxEdge int, at time.Duration) error {
+	if maxEdge <= 0 {
+		return fmt.Errorf("media: invalid size %d", maxEdge)
+	}
+	if at < 0 {
+		return fmt.Errorf("media: invalid offset %s", at)
+	}
+	cw := &countingWriter{w: dst}
+	// Milliseconds are as fine as a player reports a position anyway.
+	if err := v.extract(ctx, src, size, cw, maxEdge, fmt.Sprintf("%.3f", at.Seconds())); err != nil {
+		return err
+	}
+	if cw.n == 0 {
+		return fmt.Errorf("%w: no frame at %s", ErrNotAVideo, at)
+	}
+	return nil
+}
+
+// countingWriter notices whether ffmpeg wrote anything. Seeking past the end
+// is not an error to ffmpeg: it exits cleanly having encoded nothing.
+type countingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
 func (v *Video) extract(ctx context.Context, src io.ReadSeeker, size int64, dst io.Writer, maxEdge int, seek string) error {
 	if _, err := src.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("media: rewind video: %w", err)

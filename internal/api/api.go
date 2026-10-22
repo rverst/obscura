@@ -80,6 +80,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/media/{id}/thumb", s.requireSession(http.HandlerFunc(s.handleMediaContent("thumb"))))
 	mux.Handle("GET /api/media/{id}/preview", s.requireSession(http.HandlerFunc(s.handleMediaContent("preview"))))
 	mux.Handle("GET /api/media/{id}/original", s.requireSession(http.HandlerFunc(s.handleMediaContent("original"))))
+	mux.Handle("PUT /api/media/{id}/poster", s.requireSession(http.HandlerFunc(s.handleSetPoster)))
 
 	// Trash. DELETE on the media resource is reversible; permanent deletion is
 	// a separate path, so no client destroys a photograph by mistyping a verb.

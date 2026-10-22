@@ -328,7 +328,9 @@ func (l *Library) processVideo(ctx context.Context, v Vault, m *Media, created *
 		{media.ThumbSize, &m.BlobThumb},
 		{media.PreviewSize, &m.BlobPreview},
 	} {
-		id, err := l.derivePoster(ctx, v, src, d.size)
+		id, err := l.derivePoster(v, func(w io.Writer) error {
+			return l.video.Poster(ctx, src, src.Size, w, d.size)
+		})
 		if err != nil {
 			// Give up on stills but keep the video.
 			return nil
@@ -339,15 +341,16 @@ func (l *Library) processVideo(ctx context.Context, v Vault, m *Media, created *
 	return nil
 }
 
-// derivePoster stores one still from the video as its own blob.
-func (l *Library) derivePoster(ctx context.Context, v Vault, src *blob.Reader, size int) (string, error) {
+// derivePoster stores one still from the video as its own blob. write is
+// what cuts the frame: the automatic choice on ingest, or one picked by hand.
+func (l *Library) derivePoster(v Vault, write func(io.Writer) error) (string, error) {
 	w, err := l.blobs.Create(v.DEK)
 	if err != nil {
 		return "", err
 	}
 	defer w.Abort()
 
-	if err := l.video.Poster(ctx, src, src.Size, w, size); err != nil {
+	if err := write(w); err != nil {
 		return "", err
 	}
 	if _, _, err := w.Commit(); err != nil {
