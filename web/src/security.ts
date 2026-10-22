@@ -4,8 +4,10 @@ import { signal } from "@preact/signals";
 import { ApiError, api, isUnauthorized, type UnlockMethod } from "./api";
 import {
   PasskeyUnsupported,
+  dropEnrollment,
   enrollPasskey,
   passkeysAvailable,
+  prepareEnrollment,
 } from "./passkey";
 
 export const securityOpen = signal(false);
@@ -30,6 +32,7 @@ export async function openSecurity(): Promise<void> {
 
 export function closeSecurity(): void {
   securityOpen.value = false;
+  dropEnrollment();
   securityError.value = "";
 }
 
@@ -38,6 +41,8 @@ export async function refreshMethods(): Promise<void> {
     const me = await api.me();
     unlockMethods.value = me.unlock_via;
     canEnroll.value = me.passkeys_ready && passkeysAvailable();
+    // Fetched now so that "Add passkey" can open the prompt within the click.
+    if (canEnroll.value && securityOpen.value) prepareEnrollment();
   } catch (err) {
     securityError.value = messageOf(err);
   }

@@ -9,7 +9,13 @@ import { api, whenSessionExpires, type Cursor, type Media, ApiError } from "./ap
 import { albums, currentAlbum, albumItems, loadAlbums } from "./albums";
 import { closeLightbox } from "./viewer";
 import { favoritesOnly } from "./favorites";
-import { passkeysAvailable, signInWithPasskey } from "./passkey";
+import {
+  dropEnrollment,
+  dropSignIn,
+  passkeysAvailable,
+  prepareSignIn,
+  signInWithPasskey,
+} from "./passkey";
 import { navigate, ROOT, startRouting } from "./router";
 
 export type Screen = "loading" | "setup" | "login" | "gallery";
@@ -56,7 +62,7 @@ export async function boot(): Promise<void> {
       return;
     }
     if (!s.authenticated) {
-      passkeyOffered.value = s.passkeys && passkeysAvailable();
+      offerPasskey(s.passkeys);
       screen.value = "login";
       return;
     }
@@ -166,6 +172,7 @@ whenSessionExpires(sessionExpired);
 
 /** Drops everything the signed-in session was holding. */
 function toLoginScreen(): void {
+  dropEnrollment();
   resetLibrary();
   username.value = "";
   // Whatever the last screen had to say about signing in is about a session
@@ -182,13 +189,24 @@ function toLoginScreen(): void {
 async function refreshUnlockOffer(): Promise<void> {
   try {
     const s = await api.status();
-    passkeyOffered.value = s.passkeys && passkeysAvailable();
+    offerPasskey(s.passkeys);
   } catch {
-    passkeyOffered.value = false;
+    offerPasskey(false);
   }
 }
 
+/**
+ * Sets whether the login screen offers a passkey, and keeps a challenge ready
+ * when it does, so the button can open the prompt within the click.
+ */
+function offerPasskey(registered: boolean): void {
+  passkeyOffered.value = registered && passkeysAvailable();
+  if (passkeyOffered.value) prepareSignIn();
+  else dropSignIn();
+}
+
 async function enterGallery(): Promise<void> {
+  dropSignIn();
   resetLibrary();
   screen.value = "gallery";
   await Promise.all([loadMore(), loadAlbums()]);

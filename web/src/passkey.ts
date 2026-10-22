@@ -9,7 +9,11 @@
 // The raw PRF output never leaves this file. What goes to the server is an
 // HKDF of it, and only ever over TLS.
 
-import { api } from "./api";
+import {
+  api,
+  type PasskeyLoginChallenge,
+  type PasskeyRegisterChallenge,
+} from "./api";
 
 /**
  * HKDF info string. Must match auth.PRFInfo on the server, byte for byte.
@@ -45,6 +49,114 @@ export function passkeysAvailable(): boolean {
   );
 }
 
+// --- Challenges fetched ahead of the click ----------------------------------
+
+// Why the challenge is fetched before anyone asks for it: a browser hands the
+// WebAuthn prompt to an extension provider (Bitwarden, 1Password) only while
+// the click that started it still counts as a user gesture. Safari in
+// particular closes that window across a network round trip, and then its own
+// platform sheet takes the prompt instead. So navigator.credentials has to be
+// called in the same turn as the click, which means the challenge must already
+// be here.
+
+/** Refetched this long after arriving. The server keeps one for five minutes. */
+const REFRESH_AFTER = 4 * 60 * 1000;
+/** Past this a challenge is not trusted to survive the trip back. */
+const USABLE_FOR = 4.5 * 60 * 1000;
+
+/**
+ * One challenge kept ready while a screen that might use it is open.
+ *
+ * A challenge is single use, so take() hands it out once. A replacement is
+ * fetched on a timer, kept from overlapping, and anything superseded or left
+ * over after cancel() goes to discard.
+ */
+class Ready<T> {
+  private value: T | undefined;
+  private at = 0;
+  private armed = false;
+  private inFlight = false;
+  private generation = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(
+    private readonly fetch: () => Promise<T>,
+    private readonly discard: (value: T) => void = () => undefined,
+  ) {}
+
+  /** Starts keeping a challenge ready, or fetches a fresh one if used up. */
+  prepare(): void {
+    this.armed = true;
+    if (this.value === undefined || Date.now() - this.at >= REFRESH_AFTER) {
+      void this.refill();
+    }
+  }
+
+  /** Hands out the ready challenge, if there is one that can still be used. */
+  take(): T | undefined {
+    const value = this.value;
+    if (value === undefined || Date.now() - this.at >= USABLE_FOR) return;
+    this.value = undefined;
+    return value;
+  }
+
+  /** Fetches a replacement after a failed attempt, if still wanted. */
+  again(): void {
+    if (this.armed) void this.refill();
+  }
+
+  /** Stops keeping one ready and lets go of whatever is held. */
+  cancel(): void {
+    this.armed = false;
+    this.generation++;
+    clearTimeout(this.timer);
+    if (this.value !== undefined) this.discard(this.value);
+    this.value = undefined;
+  }
+
+  private async refill(): Promise<void> {
+    if (this.inFlight) return;
+    this.inFlight = true;
+    const generation = this.generation;
+    let fresh: T;
+    try {
+      fresh = await this.fetch();
+    } catch {
+      // The click will fetch again and report whatever went wrong. Retrying
+      // here on a timer would only repeat a failure nobody is looking at.
+      this.armed = false;
+      return;
+    } finally {
+      this.inFlight = false;
+    }
+    if (generation !== this.generation || !this.armed) {
+      this.discard(fresh);
+      return;
+    }
+    if (this.value !== undefined) this.discard(this.value);
+    this.value = fresh;
+    this.at = Date.now();
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => void this.refill(), REFRESH_AFTER);
+  }
+}
+
+const registration = new Ready<PasskeyRegisterChallenge>(
+  () => api.passkeyRegisterBegin(),
+  (begin) => void api.passkeyRegisterAbort(begin.ceremony).catch(() => undefined),
+);
+
+// There is no abort for sign-in. An unused one simply runs out on the server.
+const signIn = new Ready<PasskeyLoginChallenge>(() => api.passkeyLoginBegin());
+
+/** Keeps an enrollment challenge ready while the unlock methods are open. */
+export const prepareEnrollment = (): void => registration.prepare();
+export const dropEnrollment = (): void => registration.cancel();
+
+/** Keeps a sign-in challenge ready while the login screen offers a passkey. */
+export const prepareSignIn = (): void => signIn.prepare();
+export const dropSignIn = (): void => signIn.cancel();
+
 // --- Registration -----------------------------------------------------------
 
 /**
@@ -54,12 +166,25 @@ export function passkeysAvailable(): boolean {
  * that authenticates but cannot decrypt would be worse than no passkey at all:
  * it would look like a working way in and then fail at the point where the user
  * has already dismissed the password field.
+ *
+ * Has to be called straight from the click, with nothing awaited first.
  */
 export async function enrollPasskey(label: string): Promise<void> {
   if (!passkeysAvailable()) {
     throw new PasskeyUnsupported("This browser cannot use passkeys.");
   }
-  const begin = await api.passkeyRegisterBegin();
+  try {
+    await enroll(registration.take() ?? (await api.passkeyRegisterBegin()), label);
+  } catch (err) {
+    registration.again();
+    throw err;
+  }
+}
+
+async function enroll(
+  begin: PasskeyRegisterChallenge,
+  label: string,
+): Promise<void> {
   const salt = fromBase64url(begin.prf_salt);
 
   const publicKey: PublicKeyCredentialCreationOptions = {
@@ -144,13 +269,26 @@ async function prfResult(
 
 // --- Sign-in ----------------------------------------------------------------
 
-/** Signs in with a passkey and returns the username. */
+/**
+ * Signs in with a passkey and returns the username.
+ *
+ * Has to be called straight from the click, with nothing awaited first. The
+ * challenge kept ready is the one without a username, so naming one fetches.
+ */
 export async function signInWithPasskey(username?: string): Promise<string> {
   if (!passkeysAvailable()) {
     throw new PasskeyUnsupported("This browser cannot use passkeys.");
   }
-  const begin = await api.passkeyLoginBegin(username);
+  const ready = username ? undefined : signIn.take();
+  try {
+    return await assert(ready ?? (await api.passkeyLoginBegin(username)));
+  } catch (err) {
+    signIn.again();
+    throw err;
+  }
+}
 
+async function assert(begin: PasskeyLoginChallenge): Promise<string> {
   // One salt per credential: the browser decides which authenticator to use
   // only once the user picks, so every candidate arrives with its own.
   const evalByCredential: Record<string, { first: BufferSource }> = {};

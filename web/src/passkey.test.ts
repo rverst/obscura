@@ -4,8 +4,12 @@ import {
   decodeCreationOptions,
   decodeRequestOptions,
   deriveUnlockKey,
+  dropEnrollment,
+  dropSignIn,
   enrollPasskey,
   fromBase64url,
+  prepareEnrollment,
+  prepareSignIn,
   signInWithPasskey,
   toBase64url,
 } from "./passkey";
@@ -95,6 +99,10 @@ const beginBody = {
 };
 
 beforeEach(() => {
+  // The challenges kept ready live in the module, so they outlast a test.
+  dropEnrollment();
+  dropSignIn();
+  vi.useRealTimers();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -299,5 +307,102 @@ describe("sign-in", () => {
       PasskeyUnsupported,
     );
     expect(mocked.passkeyLoginFinish).not.toHaveBeenCalled();
+  });
+});
+
+// The point of fetching ahead: an extension provider only gets the prompt while
+// the click still counts as a user gesture, and a round trip ends that.
+describe("challenges fetched ahead of the click", () => {
+  const loginBody = {
+    ceremony: "cer-2",
+    options: { publicKey: { challenge: "AQ", allowCredentials: [] } },
+    prf_salts: {},
+  };
+
+  /** Lets the prefetch's promise chain settle. */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("opens the enrollment prompt in the same turn as the call", async () => {
+    stubBrowser(
+      fakeCredential({ results: { first: new Uint8Array(32).buffer } }),
+      null,
+    );
+    mocked.passkeyRegisterBegin.mockResolvedValue(beginBody);
+    mocked.passkeyRegisterFinish.mockResolvedValue(undefined);
+    prepareEnrollment();
+    await settle();
+
+    const done = enrollPasskey("Phone");
+    expect(navigator.credentials.create).toHaveBeenCalledTimes(1);
+    await done;
+    expect(mocked.passkeyRegisterBegin).toHaveBeenCalledTimes(1);
+    expect(firstCall(mocked.passkeyRegisterFinish).ceremony).toBe("cer-1");
+  });
+
+  it("opens the sign-in prompt in the same turn as the call", async () => {
+    stubBrowser(null, fakeCredential(undefined, "get"));
+    mocked.passkeyLoginBegin.mockResolvedValue(loginBody);
+    prepareSignIn();
+    await settle();
+
+    const done = signInWithPasskey();
+    expect(navigator.credentials.get).toHaveBeenCalledTimes(1);
+    await expect(done).rejects.toBeInstanceOf(PasskeyUnsupported);
+  });
+
+  it("hands a challenge out once, and fetches another after a failure", async () => {
+    stubBrowser(null, fakeCredential(undefined, "get"));
+    mocked.passkeyLoginBegin.mockResolvedValue(loginBody);
+    prepareSignIn();
+    await settle();
+
+    await expect(signInWithPasskey()).rejects.toBeInstanceOf(PasskeyUnsupported);
+    // Replaced straight away, so the next click is in the gesture as well.
+    expect(mocked.passkeyLoginBegin).toHaveBeenCalledTimes(2);
+    await settle();
+
+    const done = signInWithPasskey();
+    expect(navigator.credentials.get).toHaveBeenCalledTimes(2);
+    await expect(done).rejects.toBeInstanceOf(PasskeyUnsupported);
+  });
+
+  it("replaces a challenge before the server forgets it", async () => {
+    vi.useFakeTimers();
+    mocked.passkeyRegisterBegin
+      .mockResolvedValueOnce(beginBody)
+      .mockResolvedValueOnce({ ...beginBody, ceremony: "cer-3" });
+    mocked.passkeyRegisterAbort.mockResolvedValue(undefined);
+    prepareEnrollment();
+    await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+
+    expect(mocked.passkeyRegisterBegin).toHaveBeenCalledTimes(2);
+    // The superseded one is dropped rather than left on the server.
+    expect(mocked.passkeyRegisterAbort).toHaveBeenCalledWith("cer-1");
+  });
+
+  it("does not use a challenge that may already have expired", async () => {
+    vi.useFakeTimers();
+    stubBrowser(null, null);
+    // The refresh fails, so the first challenge is the only one there is.
+    mocked.passkeyRegisterBegin
+      .mockResolvedValueOnce(beginBody)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(beginBody);
+    prepareEnrollment();
+    await vi.advanceTimersByTimeAsync(4.5 * 60 * 1000);
+
+    void enrollPasskey("Phone").catch(() => undefined);
+    expect(navigator.credentials.create).not.toHaveBeenCalled();
+    expect(mocked.passkeyRegisterBegin).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets go of the challenge when the screen closes", async () => {
+    mocked.passkeyRegisterBegin.mockResolvedValue(beginBody);
+    mocked.passkeyRegisterAbort.mockResolvedValue(undefined);
+    prepareEnrollment();
+    await settle();
+
+    dropEnrollment();
+    expect(mocked.passkeyRegisterAbort).toHaveBeenCalledWith("cer-1");
   });
 });
