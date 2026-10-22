@@ -73,6 +73,7 @@ ARG VERSION=dev
 LABEL org.opencontainers.image.title="obscura" \
       org.opencontainers.image.description="Self-hosted photo and video viewer, encrypted at rest" \
       org.opencontainers.image.source="https://github.com/rverst/obscura" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
 
 # vips-tools provides vipsthumbnail, which obscura runs as a subprocess rather
