@@ -359,13 +359,19 @@ to — a backup nobody has ever restored is a guess.
 
 **Which passkey provider takes the prompt.** obscura fetches each passkey
 challenge before the button is pressed, so the click goes straight to the
-browser. That matters more than it looks: browsers hand the prompt to an
-extension such as Bitwarden or 1Password only while the click still counts as a
-user gesture, and Safari in particular ends that across a network round trip,
-after which the system provider (iCloud Keychain) takes the prompt instead. If
-the wrong provider still answers, the browser's passkey settings and the
-extension's own settings decide who is offered, and the system dialog usually
-has a "use another device / another provider" escape hatch.
+browser. That matters where a browser extension such as Bitwarden or 1Password
+handles passkeys itself, as in Chrome. The extension only gets the prompt while
+the click still counts as a user gesture, and a network round trip in between
+can end that. If the wrong provider still answers, the browser's passkey
+settings and the extension's own settings decide who is offered.
+
+Safari always shows the system dialog. A password manager registered with
+macOS, such as Bitwarden, can take the passkey from there, and that is expected.
+Whether the passkey can unlock anything is a separate question, because that
+depends on the browser passing PRF through. In testing, Safari returned no PRF
+result at all, neither through Bitwarden nor through Apple Passwords, and the
+[PRF test page](https://www.passkeyprf.com/) agreed. Chrome is the browser to
+use for enrolling. Bitwarden's PRF support appears to depend on it.
 
 One gap remains. Some browsers only switch PRF on when a passkey is created and
 need a second prompt to evaluate it. That second prompt follows the first
@@ -375,7 +381,9 @@ provider.
 Worth telling the two failure modes apart: if the wrong provider takes the
 prompt you get a passkey saved in the wrong place. If the provider that answers
 cannot do the PRF extension, obscura refuses the enrollment outright and says
-so — nothing is saved, and your password is untouched.
+so. Nothing is saved on the server, and your password is untouched. The
+provider will usually have stored the passkey by then. It is useless here and
+can be deleted there.
 
 ### Fast inner loop
 
