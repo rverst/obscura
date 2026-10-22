@@ -95,13 +95,26 @@ export function Login() {
         </label>
         <label>
           {useRecovery ? "Recovery code" : "Password"}
-          <input
-            type={useRecovery ? "text" : "password"}
-            value={secret}
-            onInput={(e) => setSecret((e.target as HTMLInputElement).value)}
-            autocomplete={useRecovery ? "off" : "current-password"}
-            required
-          />
+          {/* Two elements rather than a computed type: Preact's input typings
+              pair each type with the attributes valid for it, and a union of
+              two types satisfies neither. */}
+          {useRecovery ? (
+            <input
+              type="text"
+              value={secret}
+              onInput={(e) => setSecret((e.target as HTMLInputElement).value)}
+              autocomplete="off"
+              required
+            />
+          ) : (
+            <input
+              type="password"
+              value={secret}
+              onInput={(e) => setSecret((e.target as HTMLInputElement).value)}
+              autocomplete="current-password"
+              required
+            />
+          )}
         </label>
         <button class="primary" type="submit" disabled={busy}>
           {busy ? "Unlocking…" : "Unlock"}

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type MutableRef } from "preact/hooks";
+import type { RefObject } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
 import { albumItems, currentAlbum, setAlbumCover } from "./albums";
 import { setFavorite } from "./favorites";
@@ -242,7 +243,7 @@ function Info({
   canCover: boolean;
   isCover: boolean;
   /** The player, when the still can be chosen from it. */
-  video: MutableRef<HTMLVideoElement | null> | null;
+  video: RefObject<HTMLVideoElement | null> | null;
 }) {
   const cutting = posterBusy.value === media.id;
   const exif = media.exif;
