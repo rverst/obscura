@@ -64,7 +64,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Alpine rather than scratch: obscura shells out to vipsthumbnail and ffmpeg, so
 # the runtime needs a package manager rather than an empty filesystem. busybox
 # wget also serves as a healthcheck without baking one into the binary.
-FROM alpine:3.22 AS runtime
+FROM alpine:3.24 AS runtime
 ARG VERSION=dev
 
 # Provenance for a published image. Without at least image.source, a pulled
