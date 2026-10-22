@@ -309,6 +309,15 @@ Three things in there are load-bearing rather than decorative:
   already compressed; running them through gzip again spends Pi CPU to make
   them slightly larger.
 
+If the host already runs Traefik, `docker-compose.traefik.yml` replaces Caddy
+with labels on the obscura container. It expects an external `proxy` network,
+entrypoints `http` and `https`, a resolver `le` and two file-provider entries
+(`https-redirect`, `secure-tls`) — adjust the labels to your names:
+
+```sh
+docker compose -f docker-compose.traefik.yml up -d
+```
+
 If you would rather use nginx, the requirements are: terminate TLS, forward to
 port 8080, set `X-Forwarded-Proto` and `X-Forwarded-Host`, and do not impose a
 request body limit or a short upload timeout — a video arrives in 8 MB chunks
