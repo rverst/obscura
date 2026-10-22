@@ -6,8 +6,7 @@ VERSION  ?= dev
 REGISTRY ?= ghcr.io/rverst
 
 # 64-bit only, and deliberately so. Nothing here is 32-bit clean -- the EXIF
-# decoder assumes a 64-bit int and does not even compile for GOARCH=arm -- and
-# chasing that would buy an original Pi Zero, which was never the target. "Runs
+# decoder assumes a 64-bit int and does not even compile for GOARCH=arm. "Runs
 # on a Pi" means a 64-bit OS on a Pi 4, 5 or Zero 2 W.
 PLATFORMS ?= linux/arm64,linux/amd64
 

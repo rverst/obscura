@@ -42,6 +42,8 @@ Encryption at rest is not a backup. Keep one.
 Docker. Nothing else — the build is cgo-free, so no Go toolchain, no system
 libraries and no cross-compiler are needed, even when targeting a Pi.
 
+The target has to run a 64-bit OS; on a Pi that means a Pi 4, 5 or Zero 2 W.
+
 ## Usage
 
 ```sh
@@ -355,26 +357,25 @@ to — a backup nobody has ever restored is a guess.
 
 ### Known issues
 
-**The browser, not obscura, chooses which passkey provider handles enrollment.**
-On macOS and Windows the system provider (iCloud Keychain, Windows Hello) tends
-to grab the prompt before a browser extension such as Bitwarden or 1Password
-gets a look in. There is no way for a website to ask for a particular provider,
-so this cannot be fixed here. What works is telling the browser: Chrome's
-passkey settings and the extension's own settings decide who is offered, and
-the system dialog usually has a "use another device / another provider" escape
-hatch.
+**Which passkey provider takes the prompt.** obscura fetches each passkey
+challenge before the button is pressed, so the click goes straight to the
+browser. That matters more than it looks: browsers hand the prompt to an
+extension such as Bitwarden or 1Password only while the click still counts as a
+user gesture, and Safari in particular ends that across a network round trip,
+after which the system provider (iCloud Keychain) takes the prompt instead. If
+the wrong provider still answers, the browser's passkey settings and the
+extension's own settings decide who is offered, and the system dialog usually
+has a "use another device / another provider" escape hatch.
+
+One gap remains. Some browsers only switch PRF on when a passkey is created and
+need a second prompt to evaluate it. That second prompt follows the first
+rather than a click, so on those browsers it may still reach the system
+provider.
 
 Worth telling the two failure modes apart: if the wrong provider takes the
 prompt you get a passkey saved in the wrong place. If the provider that answers
 cannot do the PRF extension, obscura refuses the enrollment outright and says
 so — nothing is saved, and your password is untouched.
-
-**32-bit is not supported.** The build is 64-bit only; see the note in the
-Makefile. A Pi 4, 5 or Zero 2 W running a 64-bit OS is fine, an original Pi Zero
-is not.
-
-**No licence yet.** The repository has no `LICENSE` file, which matters before
-publishing an image anyone else might pull.
 
 ### Fast inner loop
 
@@ -386,3 +387,7 @@ toolchain. Docker remains the authoritative path: it is what runs on the Pi.
 The codebase is English throughout — comments, error strings, log messages and
 HTTP responses. English is the application's primary language for now; a
 translation layer can be added later if it is needed.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
