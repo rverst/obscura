@@ -223,6 +223,15 @@ async function enroll(
 }
 
 /**
+ * The authenticator has already stored the credential by the time PRF turns
+ * out to be missing, and nothing here can take that back. Left unsaid, it sits
+ * in the password manager looking like a way in.
+ */
+const SAVED_ANYWAY =
+  " Your device or password manager may have saved the passkey anyway. " +
+  "It cannot open this library, so you can delete it there.";
+
+/**
  * Gets the PRF output for a freshly created credential.
  *
  * Two shapes exist in the wild. Some browsers return the result straight from
@@ -240,7 +249,8 @@ async function prfResult(
   if (results?.enabled !== true) {
     throw new PasskeyUnsupported(
       "This device cannot produce an unlock key, so a passkey here could sign " +
-        "in but not open the library. Use your password on this device.",
+        "in but not open the library. Use your password on this device." +
+        SAVED_ANYWAY,
     );
   }
 
@@ -261,7 +271,8 @@ async function prfResult(
   if (!secret) {
     throw new PasskeyUnsupported(
       "This device reported an unlock key and then did not provide one. " +
-        "Use your password here.",
+        "Use your password here." +
+        SAVED_ANYWAY,
     );
   }
   return secret;
