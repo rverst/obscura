@@ -72,3 +72,37 @@ export function toggleInfo(): void {
     // forgets between visits.
   }
 }
+
+const VOLUME_KEY = "obscura.video.volume";
+
+/** What a video player was last left at, so the next clip starts there too. */
+export interface VideoVolume {
+  volume: number;
+  muted: boolean;
+}
+
+/**
+ * The remembered volume, or null to leave the browser's default alone.
+ *
+ * Per device rather than on the server: the right level depends on the
+ * speakers in front of you, not on the library.
+ */
+export function loadVolume(): VideoVolume | null {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<VideoVolume>;
+    if (typeof v.volume !== "number" || !(v.volume >= 0 && v.volume <= 1)) return null;
+    return { volume: v.volume, muted: v.muted === true };
+  } catch {
+    return null;
+  }
+}
+
+export function saveVolume(v: VideoVolume): void {
+  try {
+    localStorage.setItem(VOLUME_KEY, JSON.stringify(v));
+  } catch {
+    // As with the info panel: it works, it just forgets.
+  }
+}

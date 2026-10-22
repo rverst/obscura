@@ -1,10 +1,19 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState, type MutableRef } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
 import { albumItems, currentAlbum, setAlbumCover } from "./albums";
 import { setFavorite } from "./favorites";
+import { posterBusy, posterError, setPoster } from "./poster";
 import { closePhoto, showPhoto } from "./router";
 import { purgeMedia, restoreMedia } from "./trash";
-import { infoPinned, isTrashed, lightboxScope, toggleInfo } from "./viewer";
+import { handleVideoKey, trackFrames } from "./videokeys";
+import {
+  infoPinned,
+  isTrashed,
+  lightboxScope,
+  loadVolume,
+  saveVolume,
+  toggleInfo,
+} from "./viewer";
 
 /** How long the pointer must sit still before the controls step out of the way. */
 const IDLE_MS = 2500;
@@ -56,6 +65,31 @@ export function Lightbox({ media }: { media: Media }) {
 
   const trashed = isTrashed(media);
   const idle = useIdle();
+  const video = useRef<HTMLVideoElement>(null);
+
+  // Every clip used to start at full volume, however quiet the last one was
+  // left. Set before playback gets going, and again per clip, since stepping
+  // to the next one keeps the element and swaps only its source.
+  useEffect(() => {
+    const el = video.current;
+    const saved = loadVolume();
+    if (!el || !saved) return;
+    el.volume = saved.volume;
+    el.muted = saved.muted;
+  }, [media.id]);
+
+  // Per clip: a new source can have a different frame rate.
+  const frames = useRef<ReturnType<typeof trackFrames> | null>(null);
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    const tracker = trackFrames(el);
+    frames.current = tracker;
+    return () => {
+      tracker.stop();
+      frames.current = null;
+    };
+  }, [media.id, media.kind]);
 
   // Only offered where it means something: the photo has to be in the album
   // whose cover would change. The server enforces the same rule.
@@ -67,6 +101,11 @@ export function Lightbox({ media }: { media: Media }) {
   // reviewing a hundred photos means a hundred round trips to the mouse.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const el = video.current;
+      if (el && handleVideoKey(el, e, frames.current?.frame() ?? 1 / 30)) {
+        e.preventDefault();
+        return;
+      }
       switch (e.key) {
         case "Escape":
           closePhoto();
@@ -158,7 +197,19 @@ export function Lightbox({ media }: { media: Media }) {
         {media.kind === "video" ? (
           // Served straight from the encrypted blob with range support, so
           // seeking works without downloading the whole file first.
-          <video src={mediaURL(media, "original")} controls autoPlay />
+          <video
+            ref={video}
+            src={mediaURL(media, "original")}
+            // The chosen still while the first frames load, rather than black.
+            poster={media.has_thumb ? mediaURL(media, "preview") : undefined}
+            controls
+            autoPlay
+            // Safari on iOS ignores volume set from a page, but honours muted.
+            onVolumeChange={(e) => {
+              const el = e.currentTarget;
+              saveVolume({ volume: el.volume, muted: el.muted });
+            }}
+          />
         ) : (
           <img
             // The preview, not the original: a 24 MP JPEG per photo would make
@@ -169,7 +220,14 @@ export function Lightbox({ media }: { media: Media }) {
         )}
       </div>
 
-      {infoPinned.value && <Info media={media} canCover={inAlbum} isCover={isCover} />}
+      {infoPinned.value && (
+        <Info
+          media={media}
+          canCover={inAlbum}
+          isCover={isCover}
+          video={media.kind === "video" && !trashed ? video : null}
+        />
+      )}
     </div>
   );
 }
@@ -178,11 +236,15 @@ function Info({
   media,
   canCover,
   isCover,
+  video,
 }: {
   media: Media;
   canCover: boolean;
   isCover: boolean;
+  /** The player, when the still can be chosen from it. */
+  video: MutableRef<HTMLVideoElement | null> | null;
 }) {
+  const cutting = posterBusy.value === media.id;
   const exif = media.exif;
   const taken = media.taken_at ?? media.created_at;
 
@@ -241,6 +303,26 @@ function Info({
         >
           {isCover ? "Album cover — click to choose automatically" : "Use as album cover"}
         </button>
+      )}
+
+      {/* The automatic still is a frame one second in, which for a clip that
+          opens on a pan is often a blur. Pausing on a better moment and
+          taking that one is the way to pick, so the button reads the player. */}
+      {video && (
+        <>
+          <button
+            class="cover-button"
+            disabled={cutting}
+            title="Pause on the moment you want. Shift+J / Shift+L step one frame."
+            onClick={() => {
+              const el = video.current;
+              if (el) void setPoster(media.id, el.currentTime * 1000);
+            }}
+          >
+            {cutting ? "Setting thumbnail…" : "Use this frame as thumbnail"}
+          </button>
+          {posterError.value?.id === media.id && <p class="error">{posterError.value.message}</p>}
+        </>
       )}
 
       <p style="margin-top:20px">

@@ -283,6 +283,13 @@ export const api = {
     }),
 
   getMedia: (id: number) => request<Media>(`/api/media/${id}`),
+
+  /** Makes the frame at atMs the video's stills; returns the updated record. */
+  setPoster: (id: number, atMs: number) =>
+    request<Media>(`/api/media/${id}/poster`, {
+      method: "PUT",
+      body: JSON.stringify({ at_ms: atMs }),
+    }),
 };
 
 /**
