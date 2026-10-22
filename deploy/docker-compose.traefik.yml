@@ -1,0 +1,86 @@
+# obscura behind an existing Traefik, which handles TLS.
+#
+#   cp env.example .env    # then set OBSCURA_DOMAIN
+#   docker compose -f docker-compose.traefik.yml up -d
+#
+# The counterpart to docker-compose.prod.yml for a host that already runs
+# Traefik with the docker provider. It assumes that Traefik has:
+#
+#   - entrypoints named "http" and "https"
+#   - a certificate resolver named "le"
+#   - an external docker network named "proxy" it reaches containers through
+#   - from its file provider: an "https-redirect" middleware and a "secure-tls"
+#     TLS options set
+#
+# Those names are this setup's, not Traefik defaults. Adjust the labels to yours.
+#
+# Traefik v3 cuts a request off after 60 seconds (entryPoints.<name>.transport.
+# respondingTimeouts.readTimeout). Uploads arrive in 8 MB chunks, one request
+# each, which is plenty on a LAN. Over a slow uplink raise that timeout in the
+# static configuration -- a label cannot.
+
+# Pinned, because compose otherwise names the project after the directory, and a
+# rename silently starts a new project with a new empty volume. Distinct from
+# the Caddy stack so the two never share or fight over a volume.
+name: obscura-traefik
+
+services:
+  obscura:
+    image: ${OBSCURA_IMAGE:-ghcr.io/rverst/obscura:latest}
+    restart: unless-stopped
+    # Deliberately no ports. The only way in is through Traefik, so there is no
+    # plain-http door left open on the host.
+    volumes:
+      - obscura-data:/data
+    tmpfs:
+      # libvips falls back to a memory-mapped temp file for images too large to
+      # hold in RAM. Backing /tmp with tmpfs keeps that copy out of persistent
+      # storage -- otherwise plaintext could survive on disk behind the
+      # encryption.
+      - /tmp:size=512m,mode=1777
+    command:
+      - -addr=0.0.0.0:8080
+      - -data=/data
+      # Pinned rather than derived from each request. Without it the passkey
+      # relying party comes from the Host header, and verifying an origin
+      # against a value taken from the same request proves nothing on its own.
+      - -origin=https://${OBSCURA_DOMAIN:?set OBSCURA_DOMAIN in .env}
+      - -name=obscura
+      # Two at a time is about right for a 4-core Pi: each libvips subprocess
+      # wants roughly 30 MB, and unbounded parallelism is what kills a 2 GB
+      # machine during a bulk import. Lower it to 1 on a Pi Zero 2 W.
+      - -workers=2
+    labels:
+      - traefik.enable=true
+      # Only one network today, but naming it keeps Traefik from picking an
+      # unreachable address if a second one is ever added.
+      - traefik.docker.network=proxy
+
+      # Plain http exists only to redirect. The password must never be sent
+      # over it.
+      - traefik.http.routers.obscura.entrypoints=http
+      - traefik.http.routers.obscura.rule=Host(`${OBSCURA_DOMAIN}`)
+      - traefik.http.routers.obscura.middlewares=https-redirect@file
+
+      - traefik.http.routers.obscura-sec.entrypoints=https
+      - traefik.http.routers.obscura-sec.rule=Host(`${OBSCURA_DOMAIN}`)
+      - traefik.http.routers.obscura-sec.tls=true
+      - traefik.http.routers.obscura-sec.tls.options=secure-tls@file
+      - traefik.http.routers.obscura-sec.tls.certresolver=le
+      - traefik.http.routers.obscura-sec.middlewares=obscura-hsts
+
+      # The library is behind a password that unwraps an encryption key. A
+      # single downgraded request is enough to hand it over, so say so once and
+      # let the browser remember.
+      - traefik.http.middlewares.obscura-hsts.headers.stsSeconds=31536000
+
+      - traefik.http.services.obscura.loadbalancer.server.port=8080
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+
+volumes:
+  obscura-data:
