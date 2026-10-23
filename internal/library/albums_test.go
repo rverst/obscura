@@ -359,3 +359,49 @@ func TestAddRejectsForeignMedia(t *testing.T) {
 		t.Fatalf("added %d unknown media", added)
 	}
 }
+
+func TestUnfiledOnlyListsMediaInNoAlbum(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	album, filed := albumWith(t, f, 2)
+	loose, err := f.upload(t, "loose.jpg", testJPEG(t, 333, 222))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids := func() []int64 {
+		t.Helper()
+		items, err := List(ctx, f.vault, ListOptions{UnfiledOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := CountList(ctx, f.vault, ListOptions{UnfiledOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != len(items) {
+			t.Fatalf("CountList says %d, List returned %d", n, len(items))
+		}
+		var out []int64
+		for _, m := range items {
+			out = append(out, m.ID)
+		}
+		return out
+	}
+
+	if got := ids(); len(got) != 1 || got[0] != loose.ID {
+		t.Fatalf("unfiled = %v, want only %d", got, loose.ID)
+	}
+
+	// Taken out of its only album, a photo is waiting to be sorted again.
+	if err := RemoveFromAlbum(ctx, f.vault, album.ID, filed[0]); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 2 {
+		t.Fatalf("after removal unfiled = %v, want 2 items", got)
+	}
+
+	if n, _ := CountList(ctx, f.vault, ListOptions{}); n != 3 {
+		t.Fatalf("unfiltered count %d, want 3", n)
+	}
+}

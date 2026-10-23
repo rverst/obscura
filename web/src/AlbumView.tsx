@@ -18,6 +18,7 @@ import { navigate } from "./router";
 import { PhotoPicker } from "./PhotoPicker";
 import { UploadPanel } from "./UploadPanel";
 import { AlbumTiles, Breadcrumbs } from "./AlbumTiles";
+import { JustifiedGrid } from "./JustifiedGrid";
 import { favoritesOnly, filterFavorites } from "./favorites";
 
 /**
@@ -151,13 +152,12 @@ export function EditToggle() {
 }
 
 /**
- * Uniform grid used for both viewing and reordering an album.
+ * The grid used for both viewing and reordering an album.
  *
- * Square tiles rather than the justified layout of the main timeline: during a
- * drag the target has to be predictable, and rows that reflow as items move
- * between them make dropping a guessing game. It is also unvirtualised, which
- * is what lets a drag scroll across the whole album -- a drop target that does
- * not exist in the DOM cannot be dropped on.
+ * Justified rows like the timeline's. Nothing moves while a photo is being
+ * dragged -- the order changes only on drop -- so the rows hold still under the
+ * pointer and the before/after bar stays a reliable target. It is unvirtualised,
+ * which is what lets a drag scroll across the whole album.
  */
 function SortableGrid({ items }: { items: AlbumMedia[] }) {
   const [dragging, setDragging] = useState<number | null>(null);
@@ -176,10 +176,11 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
   };
 
   return (
-    <div class={`album-grid ${canEdit ? "editing" : ""}`}>
-      {items.map((m, index) => (
+    <JustifiedGrid items={items} class={canEdit ? "editing" : ""}>
+      {(m, style, index) => (
         <div
           key={m.id}
+          style={style}
           class={`album-tile ${dragging === m.id ? "dragging" : ""} ${
             drop?.index === index && dragging !== m.id ? `drop-${drop.side}` : ""
           }`}
@@ -258,8 +259,8 @@ function SortableGrid({ items }: { items: AlbumMedia[] }) {
             </>
           )}
         </div>
-      ))}
-    </div>
+      )}
+    </JustifiedGrid>
   );
 }
 

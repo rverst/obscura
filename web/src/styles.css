@@ -229,7 +229,13 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   background: rgba(0, 0, 0, 0.92);
 }
 .lightbox .stage {
+  /* The arrows live in here, so they cover the photograph and never the
+     detail panel -- beside it on a desktop, under it on a phone. */
+  position: relative;
   flex: 1 1 auto;
+  /* Sideways drags are ours (swipe to the next photo); vertical scrolling and
+     pinch-zoom stay with the browser. */
+  touch-action: pan-y pinch-zoom;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,16 +279,35 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   gap: 8px;
   align-items: center;
 }
-.lightbox-bar .info-toggle { margin-left: auto; }
+.lightbox-bar .spacer { flex: 1; }
+
+/* "3 / 45": centred over the photo, small, and dimmer than the marks, since it
+   is information and not a control. Absolutely placed so the marks either side
+   do not push it off-centre. */
+.lightbox-bar .position {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  white-space: nowrap;
+}
 .lightbox-bar button { background: rgba(0, 0, 0, 0.45); }
 .lightbox-bar button.on { border-color: var(--accent); color: var(--accent); }
 .lightbox-bar button.danger { color: var(--danger); }
 .lightbox-bar button.danger:hover { border-color: var(--danger); }
 
-/* The three marks over a photograph are round and quiet: same size, same
-   weight, no words, and dim until the pointer is on one of them. What is on
-   screen is a picture and not a toolbar. */
+/* The marks over a photograph are round and quiet: same size, same weight, no
+   words, and dim until the pointer is on one of them. What is on screen is a
+   picture and not a toolbar. */
 .lightbox-bar .fav,
+.lightbox-bar .fullscreen,
 .lightbox-bar .info-toggle,
 .lightbox-bar .close {
   width: 34px;
@@ -298,6 +323,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 .lightbox-bar .fav:hover,
+.lightbox-bar .fullscreen:hover,
 .lightbox-bar .info-toggle:hover,
 .lightbox-bar .close:hover,
 .lightbox-bar button:focus-visible {
@@ -323,7 +349,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   position: absolute;
   top: 22%;
   bottom: 22%;
-  width: 76px;
+  /* The hit area, not the chevron: it is invisible, so it can afford to be
+     generous. */
+  width: clamp(64px, 18vw, 140px);
   font-size: 26px;
   display: flex;
   align-items: center;
@@ -350,10 +378,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .lightbox-bar { transition: opacity 0.25s ease; }
 .lightbox .nav.prev { left: 0; }
-.lightbox .nav.next { right: 300px; }
-/* With the detail panel hidden the photo fills the width, so the strip moves
-   back to the edge with it. */
-.lightbox.no-info .nav.next { right: 0; }
+.lightbox .nav.next { right: 0; }
 
 /* Choosing a cover reads as a sentence in the detail panel, so it is a full
    width control there rather than another round mark. */
@@ -375,9 +400,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
     border-top: 1px solid var(--border);
     padding-top: 20px;
   }
-  .lightbox .nav.next { right: 0; }
-  /* No pointer to reach for them with, so they simply stay. */
-  .lightbox .nav { opacity: 1; }
+  /* No pointer to reach for them with, so they simply stay -- and a thumb
+     needs far more than a sliver at the very edge. Each side takes a third,
+     from under the bar to well above where a video keeps its controls. */
+  .lightbox .nav {
+    opacity: 1;
+    top: 64px;
+    bottom: 80px;
+    width: 30%;
+  }
 }
 
 /* --- layout --------------------------------------------------------------- */
@@ -405,6 +436,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   padding: 5px 10px;
 }
 .topbar .fav-filter.on { color: var(--danger); border-color: var(--danger); }
+
+/* "Not in an album": a filter, so it reads as on or off like the heart above. */
+.filter-toggle { font-size: 12px; white-space: nowrap; }
+.filter-toggle.on { color: var(--accent); border-color: var(--accent); }
 
 .user-menu { position: relative; }
 .user-button { display: flex; align-items: center; gap: 6px; }
@@ -611,15 +646,12 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
    photographs move under them. */
 .view-header { flex: 0 0 auto; padding: 16px 16px 0; margin-bottom: 10px; }
 
-.album-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
-}
+/* Justified rows, laid out in JS like the timeline: each tile is placed with
+   inline left/top/width/height, and the grid is as tall as its rows. */
+.album-grid { position: relative; width: 100%; }
 .album-tile {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 6px;
+  position: absolute;
+  border-radius: 4px;
   /* Visible, not hidden: the insertion bar sits just outside the tile and
      would be cut in half. The image carries the rounded corner instead. */
   overflow: visible;
@@ -631,7 +663,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 .album-grid.editing .album-tile { cursor: grab; }
 .album-grid.editing .album-tile:active { cursor: grabbing; }

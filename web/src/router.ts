@@ -24,7 +24,7 @@ import {
   openAlbum,
   openLibraryRoot,
 } from "./albums";
-import { items, view, type View } from "./state";
+import { hasMore, items, loadMore, view, type View } from "./state";
 import {
   clearSearch,
   loadTrash,
@@ -33,7 +33,7 @@ import {
   searchResults,
   trashed,
 } from "./trash";
-import { closeLightbox, openLightbox } from "./viewer";
+import { closeLightbox, lightbox, lightboxScope, openLightbox } from "./viewer";
 
 /**
  * Where the app is.
@@ -161,6 +161,41 @@ export function closePhoto(): void {
  */
 export function showPhoto(id: number): void {
   navigate({ ...currentRoute(), photo: id }, { replace: true });
+}
+
+/**
+ * Steps the lightbox one photo forward or back, round and round.
+ *
+ * Past the last photo comes the first again, so a slideshow never runs into a
+ * wall. Except in the timeline while there are pages still to fetch: there
+ * "the last photo" is only the last one loaded, so the next page is fetched
+ * and stepped into first, and the wrap waits until the library really ends.
+ * Going back from the first photo of a part-loaded timeline lands on the last
+ * one loaded -- fetching the whole library to find the true end is not worth
+ * a single keypress.
+ */
+export async function stepLightbox(delta: 1 | -1): Promise<void> {
+  const open = lightbox.value;
+  if (!open) return;
+  let scope = lightboxScope.value;
+  let index = scope.findIndex((m) => m.id === open.id);
+  if (index < 0 || scope.length < 2) return;
+
+  let next = index + delta;
+  if (next >= scope.length && currentRoute().view === "all" && hasMore()) {
+    await loadMore();
+    // Somebody may have closed the photo, or stepped elsewhere, meanwhile.
+    if (lightbox.value?.id !== open.id) return;
+    scope = items.value;
+    index = scope.findIndex((m) => m.id === open.id);
+    next = index + 1;
+    // Still more to come but nothing arrived: a failed or overlapping fetch.
+    // Staying put beats leaping back to the newest photo.
+    if (next >= scope.length && hasMore()) return;
+  }
+  next = (next + scope.length) % scope.length;
+  const target = scope[next];
+  if (target) showPhoto(target.id);
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { mediaURL } from "./api";
 import { Breadcrumbs } from "./AlbumTiles";
+import { JustifiedGrid } from "./JustifiedGrid";
 import { navigate } from "./router";
 import {
   daysLeft,
@@ -58,9 +59,9 @@ export function TrashView() {
       {items.length === 0 ? (
         <p class="empty">Nothing here.</p>
       ) : (
-        <div class="album-grid">
-          {items.map((m) => (
-            <div key={m.id} class="album-tile trashed">
+        <JustifiedGrid items={items}>
+          {(m, style) => (
+            <div key={m.id} class="album-tile trashed" style={style}>
               {/* Openable like anywhere else. Deciding whether to restore
                   something from a 256px thumbnail is guesswork, which is why
                   the lightbox not working here was worth fixing. */}
@@ -93,8 +94,8 @@ export function TrashView() {
                 </button>
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        </JustifiedGrid>
       )}
     </div>
   );

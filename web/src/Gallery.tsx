@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { mediaURL, type Media } from "./api";
 import { editing } from "./albums";
 import { layout, visibleRange, type Row } from "./layout";
-import { hasMore, items, loadError, loading, loadMore } from "./state";
+import {
+  hasMore,
+  items,
+  loadError,
+  loading,
+  loadMore,
+  setUnfiledOnly,
+  unfiledOnly,
+} from "./state";
 import { Breadcrumbs } from "./AlbumTiles";
+import { GAP, MAX_ROW_HEIGHT, TARGET_ROW_HEIGHT, useContainerSize } from "./JustifiedGrid";
 import { navigate } from "./router";
 import { trashMedia } from "./trash";
-
-const TARGET_ROW_HEIGHT = 220;
-const MAX_ROW_HEIGHT = 380;
-const GAP = 4;
 
 /** Rows rendered beyond the viewport, so scrolling does not reveal blanks. */
 const OVERSCAN_PX = 800;
@@ -19,26 +24,8 @@ const LOAD_THRESHOLD_PX = 1200;
 
 export function Gallery() {
   const scroller = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
-  const [viewport, setViewport] = useState(0);
-
-  // Width and viewport height drive the whole layout, so they are measured
-  // rather than assumed, and re-measured on resize and rotation.
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const measure = () => {
-      const style = getComputedStyle(el);
-      const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-      setWidth(el.clientWidth - padding);
-      setViewport(el.clientHeight);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const { width, height: viewport } = useContainerSize(scroller);
 
   const onScroll = useCallback(() => {
     const el = scroller.current;
@@ -74,11 +61,25 @@ export function Gallery() {
           which does not look like navigation. */}
       <header class="album-header view-header">
         <Breadcrumbs current="All photos" />
+        <span class="spacer" />
+        {/* What is still waiting to be sorted into an album. */}
+        <button
+          class={`filter-toggle ${unfiledOnly.value ? "on" : ""}`}
+          aria-pressed={unfiledOnly.value ? "true" : "false"}
+          title={unfiledOnly.value ? "Showing photos in no album" : "Show only photos in no album"}
+          onClick={() => void setUnfiledOnly(!unfiledOnly.value)}
+        >
+          Not in an album
+        </button>
       </header>
 
       <div class="gallery" ref={scroller} onScroll={onScroll}>
         {media.length === 0 && !loading.value && !loadError.value && (
-          <p class="empty">No photos yet. Upload some with the API — see the README.</p>
+          <p class="empty">
+            {unfiledOnly.value
+              ? "Every photo is in an album."
+              : "No photos yet. Upload some with the API — see the README."}
+          </p>
         )}
 
         {/* Full-height spacer: the scrollbar reflects the entire library while

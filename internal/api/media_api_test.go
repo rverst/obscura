@@ -362,6 +362,9 @@ func TestListPagesWithCursor(t *testing.T) {
 	if len(first) != 2 {
 		t.Fatalf("%d items on page one, want 2", len(first))
 	}
+	if total, _ := body["total"].(float64); total != 3 {
+		t.Fatalf("total = %v, want 3 across all pages", body["total"])
+	}
 	next, ok := body["next"].(map[string]any)
 	if !ok {
 		t.Fatal("no cursor handed back for the next page")
@@ -385,6 +388,26 @@ func TestListPagesWithCursor(t *testing.T) {
 			t.Fatalf("item %v appeared on both pages", id)
 		}
 		seen[id] = true
+	}
+}
+
+func TestListUnfiledOnly(t *testing.T) {
+	h := newHarness(t)
+	h.setupAndLogin(t)
+	ids := h.uploadIDs(t, 3)
+	albumID := h.makeAlbum(t, "Sorted")
+	h.do("POST", "/api/albums/"+albumID+"/items", map[string]any{"media_ids": ids[:2]})
+
+	code, body := h.do("GET", "/api/media?unfiled=1", nil)
+	if code != 200 {
+		t.Fatalf("list: %d", code)
+	}
+	items := body["items"].([]any)
+	if len(items) != 1 || int64(items[0].(map[string]any)["id"].(float64)) != ids[2] {
+		t.Fatalf("unfiled items = %v, want only %d", items, ids[2])
+	}
+	if total, _ := body["total"].(float64); total != 1 {
+		t.Fatalf("total = %v, want 1", body["total"])
 	}
 }
 
