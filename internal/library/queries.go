@@ -160,6 +160,26 @@ type ListOptions struct {
 	// filtering client-side would return short pages of unpredictable length
 	// and break the "load more" trigger.
 	FavoritesOnly bool
+
+	// UnfiledOnly narrows the timeline to media that is in no album at all:
+	// the photographs still waiting to be sorted.
+	UnfiledOnly bool
+}
+
+// filter is the WHERE clause the filters in opt share between List and
+// CountList, so the total shown beside a page always counts the same set.
+func (opt ListOptions) filter(v Vault) (string, []any) {
+	where := `user_id = ? AND deleted_at IS NULL`
+	args := []any{v.UserID}
+	if opt.FavoritesOnly {
+		where += ` AND favorited_at IS NOT NULL`
+	}
+	if opt.UnfiledOnly {
+		// Deleting an album cascades its album_items away, so its photos
+		// count as unfiled again without anything having to notice.
+		where += ` AND NOT EXISTS (SELECT 1 FROM album_items ai WHERE ai.media_id = media.id)`
+	}
+	return where, args
 }
 
 // List returns media newest first.
@@ -172,11 +192,7 @@ func List(ctx context.Context, v Vault, opt ListOptions) ([]*Media, error) {
 		opt.Limit = 100
 	}
 
-	args := []any{v.UserID}
-	where := `user_id = ? AND deleted_at IS NULL`
-	if opt.FavoritesOnly {
-		where += ` AND favorited_at IS NOT NULL`
-	}
+	where, args := opt.filter(v)
 	if opt.Before != nil {
 		where += ` AND (coalesce(taken_at, created_at), id) < (?, ?)`
 		args = append(args, opt.Before.Unix(), opt.BeforeID)
@@ -218,6 +234,18 @@ func Count(ctx context.Context, v Vault) (int, error) {
 	if err := v.DB.QueryRowContext(ctx,
 		`SELECT count(*) FROM media WHERE user_id = ? AND deleted_at IS NULL`,
 		v.UserID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("library: count media: %w", err)
+	}
+	return n, nil
+}
+
+// CountList counts what List would return across all pages, ignoring the
+// cursor and the limit.
+func CountList(ctx context.Context, v Vault, opt ListOptions) (int, error) {
+	where, args := opt.filter(v)
+	var n int
+	if err := v.DB.QueryRowContext(ctx,
+		`SELECT count(*) FROM media WHERE `+where, args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("library: count media: %w", err)
 	}
 	return n, nil

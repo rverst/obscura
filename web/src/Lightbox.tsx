@@ -4,7 +4,9 @@ import { mediaURL, type Media } from "./api";
 import { albumItems, currentAlbum, setAlbumCover } from "./albums";
 import { setFavorite } from "./favorites";
 import { posterBusy, posterError, setPoster } from "./poster";
-import { closePhoto, showPhoto } from "./router";
+import { FullscreenIcon } from "./icons";
+import { closePhoto, stepLightbox } from "./router";
+import { timelineTotal, view } from "./state";
 import { purgeMedia, restoreMedia } from "./trash";
 import { handleVideoKey, trackFrames } from "./videokeys";
 import {
@@ -52,6 +54,110 @@ function useIdle(): boolean {
   return idle;
 }
 
+/** The fullscreen API, with Safari's prefixed spelling as the fallback. */
+type FullscreenDocument = Document & {
+  webkitFullscreenEnabled?: boolean;
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+};
+type FullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+
+function fullscreenElement(): Element | null {
+  const doc = document as FullscreenDocument;
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+}
+
+/**
+ * Whether this browser can take an element full screen at all.
+ *
+ * Safari on the iPhone cannot (only a <video> can), so the button is not
+ * offered there; adding the app to the home screen is the way to lose the
+ * browser chrome on that one.
+ */
+function fullscreenSupported(): boolean {
+  const doc = document as FullscreenDocument;
+  return !!(doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled);
+}
+
+function setFullscreen(on: boolean): void {
+  const doc = document as FullscreenDocument;
+  if (on) {
+    // The whole document rather than the lightbox element: the lightbox is
+    // re-rendered from photo to photo, and the page underneath must stay
+    // full screen across all of them.
+    const el = document.documentElement as FullscreenElement;
+    const request = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+    void request?.().catch(() => undefined);
+  } else if (fullscreenElement()) {
+    const exit = doc.exitFullscreen?.bind(doc) ?? doc.webkitExitFullscreen?.bind(doc);
+    void exit?.().catch(() => undefined);
+  }
+}
+
+/**
+ * Full screen for as long as the lightbox is open.
+ *
+ * Follows the browser's own state, since Esc and the system gestures leave
+ * full screen without asking us, and leaves it when the photo is closed --
+ * a grid of thumbnails is not what anyone went full screen for.
+ */
+function useFullscreen(): [boolean, () => void] {
+  const [on, setOn] = useState(() => !!fullscreenElement());
+
+  useEffect(() => {
+    const sync = () => setOn(!!fullscreenElement());
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+      setFullscreen(false);
+    };
+  }, []);
+
+  return [on, () => setFullscreen(!fullscreenElement())];
+}
+
+/** How far a finger has to travel sideways before it counts as a swipe. */
+const SWIPE_PX = 50;
+
+/**
+ * Swiping sideways on the photo steps to the next or previous one.
+ *
+ * Touch and pen only: a mouse drag over a photograph is someone selecting or
+ * missing a click, not asking to move on. The gesture has to be clearly more
+ * sideways than vertical, and a second finger (a pinch) cancels it.
+ */
+function useSwipe(onSwipe: (delta: 1 | -1) => void) {
+  const start = useRef<{ id: number; x: number; y: number } | null>(null);
+  const fingers = useRef(0);
+
+  return {
+    onPointerDown: (e: PointerEvent) => {
+      if (e.pointerType === "mouse") return;
+      fingers.current++;
+      start.current = fingers.current === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null;
+    },
+    onPointerUp: (e: PointerEvent) => {
+      if (e.pointerType === "mouse") return;
+      fingers.current = Math.max(0, fingers.current - 1);
+      const from = start.current;
+      if (!from || from.id !== e.pointerId) return;
+      start.current = null;
+      const dx = e.clientX - from.x;
+      const dy = e.clientY - from.y;
+      if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        // Finger moves left, the next photo comes in from the right.
+        onSwipe(dx < 0 ? 1 : -1);
+      }
+    },
+    onPointerCancel: () => {
+      fingers.current = Math.max(0, fingers.current - 1);
+      start.current = null;
+    },
+  };
+}
+
 export function Lightbox({ media }: { media: Media }) {
   const all = lightboxScope.value;
   const index = all.findIndex((m) => m.id === media.id);
@@ -59,10 +165,20 @@ export function Lightbox({ media }: { media: Media }) {
   // Through the router, not a bare signal write: the URL names the photo on
   // screen, and stepping past it without saying so would leave a reload or a
   // copied link pointing at whichever frame the set was entered on.
-  const step = (delta: number) => {
-    const next = all[index + delta];
-    if (next) showPhoto(next.id);
-  };
+  const step = (delta: 1 | -1) => void stepLightbox(delta);
+  // A scope of one is a photo opened on its own, from a link to somewhere the
+  // timeline has not been scrolled to; there is nothing to step to.
+  const canStep = index >= 0 && all.length > 1;
+
+  // The timeline is paged, so its loaded window is not the whole of it. The
+  // server's count is; the max covers an upload that has landed since.
+  const total =
+    view.value === "all" && timelineTotal.value !== null
+      ? Math.max(timelineTotal.value, all.length)
+      : all.length;
+
+  const [fullscreen, toggleFullscreen] = useFullscreen();
+  const swipe = useSwipe(step);
 
   const trashed = isTrashed(media);
   const idle = useIdle();
@@ -164,6 +280,25 @@ export function Lightbox({ media }: { media: Media }) {
             {media.favorite ? "\u2665" : "\u2661"}
           </button>
         )}
+        <span class="spacer" />
+        {/* Where in the set this photo is. Quiet, and gone with the rest of
+            the bar once the pointer settles. */}
+        {canStep && (
+          <span class="position" aria-label={`Photo ${index + 1} of ${total}`}>
+            {index + 1} / {total}
+          </span>
+        )}
+        {fullscreenSupported() && (
+          <button
+            class={`fullscreen ${fullscreen ? "on" : ""}`}
+            title={fullscreen ? "Leave full screen" : "Full screen"}
+            aria-label={fullscreen ? "Leave full screen" : "Full screen"}
+            aria-pressed={fullscreen ? "true" : "false"}
+            onClick={toggleFullscreen}
+          >
+            <FullscreenIcon on={fullscreen} />
+          </button>
+        )}
         <button
           class={`info-toggle ${infoPinned.value ? "on" : ""}`}
           title={infoPinned.value ? "Hide details (i)" : "Show details (i)"}
@@ -180,21 +315,23 @@ export function Lightbox({ media }: { media: Media }) {
         </button>
       </div>
 
-      {/* The arrows stay out of the way of the photograph and appear when the
-          pointer does. Arrow keys and the edges of the frame both still work
-          without them; a permanent pair of chevrons over a picture does not. */}
-      {index > 0 && (
-        <button class="nav prev" onClick={() => step(-1)} aria-label="Previous">
-          ‹
-        </button>
-      )}
-      {index >= 0 && index < all.length - 1 && (
-        <button class="nav next" onClick={() => step(1)} aria-label="Next">
-          ›
-        </button>
-      )}
+      {/* A video's own controls need sideways drags for scrubbing. */}
+      <div class="stage" {...(media.kind === "video" || !canStep ? {} : swipe)}>
+        {/* The arrows stay out of the way of the photograph and appear when the
+            pointer does. Arrow keys and the edges of the frame both still work
+            without them; a permanent pair of chevrons over a picture does not.
+            Both are always there once there is a set: it wraps round. */}
+        {canStep && (
+          <>
+            <button class="nav prev" onClick={() => step(-1)} aria-label="Previous">
+              <span aria-hidden="true">‹</span>
+            </button>
+            <button class="nav next" onClick={() => step(1)} aria-label="Next">
+              <span aria-hidden="true">›</span>
+            </button>
+          </>
+        )}
 
-      <div class="stage">
         {media.kind === "video" ? (
           // Served straight from the encrypted blob with range support, so
           // seeking works without downloading the whole file first.

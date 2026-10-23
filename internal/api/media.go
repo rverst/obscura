@@ -71,6 +71,7 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	// Favourites are a filter on the timeline rather than a separate listing,
 	// so paging, the cursor and the grid all keep working unchanged.
 	opt.FavoritesOnly = q.Get("favorite") == "1"
+	opt.UnfiledOnly = q.Get("unfiled") == "1"
 	// Keyset cursor: both halves or neither, otherwise paging would silently
 	// restart from the top and loop forever.
 	before, beforeID := q.Get("before"), q.Get("before_id")
@@ -104,7 +105,14 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	for _, m := range items {
 		out = append(out, mediaJSON(m))
 	}
-	resp := map[string]any{"items": out}
+	// The lightbox says "3 / 45" while only the first page is loaded, so the
+	// size of the whole filtered set travels with every page.
+	total, err := library.CountList(r.Context(), s.vault(r), opt)
+	if err != nil {
+		s.fail(w, r, http.StatusInternalServerError, "cannot count media", err)
+		return
+	}
+	resp := map[string]any{"items": out, "total": total}
 	// Hand the client the cursor for the next page rather than making it
 	// reconstruct one from the last item.
 	if len(items) > 0 {

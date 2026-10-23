@@ -54,6 +54,15 @@ export interface Cursor {
 export interface MediaPage {
   items: Media[];
   next?: Cursor;
+  /** How many items the whole filtered listing holds, across every page. */
+  total?: number;
+}
+
+/** Narrowings of the timeline, applied on the server. */
+export interface ListFilter {
+  favorite?: boolean;
+  /** Only media that is in no album. */
+  unfiled?: boolean;
 }
 
 export interface Status {
@@ -257,7 +266,7 @@ export const api = {
   listTrash: () => request<{ items: TrashedMedia[] }>("/api/trash"),
   emptyTrash: () => request<{ purged: number }>("/api/trash/empty", { method: "POST" }),
 
-  listMedia: (cursor?: Cursor, limit = 100, favoritesOnly = false) => {
+  listMedia: (cursor?: Cursor, limit = 100, filter: ListFilter = {}) => {
     const q = new URLSearchParams({ limit: String(limit) });
     if (cursor) {
       q.set("before", String(cursor.before));
@@ -266,7 +275,8 @@ export const api = {
     // Filtered on the server so paging keeps working: sifting a page in the
     // browser would return short pages of unpredictable length and break the
     // "load more" trigger.
-    if (favoritesOnly) q.set("favorite", "1");
+    if (filter.favorite) q.set("favorite", "1");
+    if (filter.unfiled) q.set("unfiled", "1");
     return request<MediaPage>(`/api/media?${q}`);
   },
 

@@ -50,6 +50,29 @@ export const passkeyOffered = signal(false);
 export const items = signal<Media[]>([]);
 export const loading = signal(false);
 export const loadError = signal<string>("");
+
+/**
+ * How many items the whole timeline holds, under the current filters.
+ *
+ * The loaded window is only the pages scrolled through so far, so the
+ * lightbox's "3 / 45" needs the server's count. Null until the first page.
+ */
+export const timelineTotal = signal<number | null>(null);
+
+/**
+ * Whether the timeline shows only photos that are in no album.
+ *
+ * Unlike the favourites filter this one is the timeline's alone: inside an
+ * album "not in any album" can never match anything.
+ */
+export const unfiledOnly = signal(false);
+
+export async function setUnfiledOnly(on: boolean): Promise<void> {
+  if (unfiledOnly.value === on) return;
+  unfiledOnly.value = on;
+  await reloadTimeline();
+}
+
 let cursor: Cursor | undefined;
 let exhausted = false;
 
@@ -220,6 +243,8 @@ function resetLibrary(): void {
   currentAlbum.value = null;
   albumItems.value = [];
   items.value = [];
+  timelineTotal.value = null;
+  unfiledOnly.value = false;
   cursor = undefined;
   exhausted = false;
   loadError.value = "";
@@ -232,9 +257,13 @@ export async function loadMore(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const page = await api.listMedia(cursor, 100, favoritesOnly.value);
+    const page = await api.listMedia(cursor, 100, {
+      favorite: favoritesOnly.value,
+      unfiled: unfiledOnly.value,
+    });
     const fresh = page.items ?? [];
     items.value = [...items.value, ...fresh];
+    if (typeof page.total === "number") timelineTotal.value = page.total;
     cursor = page.next;
     // No cursor, or a page that added nothing, means the end. Checking both
     // guards against an empty last page looping forever.
@@ -260,6 +289,7 @@ export async function loadMore(): Promise<void> {
  */
 export async function reloadTimeline(): Promise<void> {
   items.value = [];
+  timelineTotal.value = null;
   cursor = undefined;
   exhausted = false;
   await loadMore();
